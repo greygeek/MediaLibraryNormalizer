@@ -16,4 +16,9 @@ public interface ISeriesMerger
     /// Plan and optionally execute merges for equivalent subfolders within a series folder.
     /// </summary>
     Task<List<MergeOperation>> MergeSimilarSubfoldersAsync(IEnumerable<MediaItem> items, bool dryRun);
+
+    /// <summary>
+    /// Move movie files from per-movie folders into the library root and remove empty folders.
+    /// </summary>
+    Task<List<MergeOperation>> FlattenMovieFoldersAsync(IEnumerable<MediaItem> items, bool dryRun);
 }

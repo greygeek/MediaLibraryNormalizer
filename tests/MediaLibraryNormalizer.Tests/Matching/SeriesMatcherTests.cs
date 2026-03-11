@@ -58,11 +58,8 @@ public class SeriesMatcherTests
     // === Year disambiguation ===
 
     [Fact]
-    public async Task MatchAsync_SameNameDifferentYear_FuzzyMergedBecauseNormalizedNamesMatch()
+    public async Task MatchAsync_SameNameDifferentYear_NotMerged()
     {
-        // Even with different years, fuzzy matching compares NormalizedName which
-        // is identical ("Doctor Who" vs "Doctor Who" = 100%), so they get merged.
-        // Year-based disambiguation happens at the exact-key level only.
         var items = new List<MediaItem>
         {
             CreateItem("/tv/Doctor Who (1963)", "Doctor Who (1963)", "Doctor Who", 1963),
@@ -72,8 +69,7 @@ public class SeriesMatcherTests
         var sut = CreateSut();
         var groups = await sut.MatchAsync(items);
 
-        Assert.Single(groups);
-        Assert.Equal(2, groups[0].AllFolders.Count);
+        Assert.Empty(groups);
     }
 
     [Fact]

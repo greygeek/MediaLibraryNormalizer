@@ -3,6 +3,7 @@ using MediaLibraryNormalizer.Matching;
 using MediaLibraryNormalizer.Merging;
 using MediaLibraryNormalizer.Models;
 using MediaLibraryNormalizer.Normalization;
+using MediaLibraryNormalizer.Parser;
 using MediaLibraryNormalizer.Reporting;
 using MediaLibraryNormalizer.Scanner;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,6 +25,7 @@ public class NormalizerRunner : INormalizerRunner
         var logger = serviceProvider.GetRequiredService<ILogger<NormalizerRunner>>();
         var scanner = serviceProvider.GetRequiredService<ILibraryScanner>();
         var normalizer = serviceProvider.GetRequiredService<INameNormalizer>();
+        var episodeParser = serviceProvider.GetRequiredService<IEpisodeParser>();
         var matcher = serviceProvider.GetRequiredService<ISeriesMatcher>();
         var merger = serviceProvider.GetRequiredService<ISeriesMerger>();
         var emptyCleaner = serviceProvider.GetRequiredService<IEmptyFolderCleaner>();
@@ -59,6 +61,7 @@ public class NormalizerRunner : INormalizerRunner
 
             item.NormalizedName = normalized.Title;
             item.Year = normalized.Year;
+            item.Kind = ClassifyMediaKind(item, episodeParser);
         }
 
         progress?.Report("Matching duplicate series...");
@@ -99,6 +102,20 @@ public class NormalizerRunner : INormalizerRunner
         cancellationToken.ThrowIfCancellationRequested();
         var similarFolderOperations = await merger.MergeSimilarSubfoldersAsync(scanResult.AllItems, config.DryRun);
         allOperations.AddRange(similarFolderOperations);
+
+        progress?.Report("Flattening movie folders...");
+        cancellationToken.ThrowIfCancellationRequested();
+        var groupedMoviePaths = scanResult.DuplicateGroups
+            .Where(static group => group.AllFolders.Any(folder => folder.Kind == MediaKind.Movie)
+                                   && !group.AllFolders.Any(folder => folder.Kind == MediaKind.TvSeries))
+            .SelectMany(group => group.AllFolders)
+            .Select(folder => folder.Path)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var standaloneMovies = scanResult.AllItems
+            .Where(item => item.Kind == MediaKind.Movie && !groupedMoviePaths.Contains(item.Path))
+            .ToList();
+        var movieFlattenOperations = await merger.FlattenMovieFoldersAsync(standaloneMovies, config.DryRun);
+        allOperations.AddRange(movieFlattenOperations);
 
         if (approvedSeriesKeys is not null && mergeGroups.Count > 0)
         {
@@ -225,5 +242,18 @@ public class NormalizerRunner : INormalizerRunner
             AiApiKey = config.AiApiKey,
             AiModel = config.AiModel
         };
+    }
+
+    private static MediaKind ClassifyMediaKind(MediaItem item, IEpisodeParser episodeParser)
+    {
+        if (item.SeasonFolders.Count > 0)
+            return MediaKind.TvSeries;
+
+        if (item.VideoFiles.Any(videoFile => episodeParser.Parse(videoFile) is not null))
+            return MediaKind.TvSeries;
+
+        return item.VideoFiles.Count > 0
+            ? MediaKind.Movie
+            : MediaKind.Unknown;
     }
 }

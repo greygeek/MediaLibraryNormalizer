@@ -24,6 +24,12 @@ public class SeriesMerger(
     private static readonly Regex SeasonFolderRegex = new(
         @"^(season|series)\s+(\d+)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ResolutionRegex = new(
+        @"\b(2160p|1080p|720p|576p|480p|4k)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex CodecRegex = new(
+        @"\b(x264|x265|h\.?264|h\.?265|hevc|avc|xvid|divx|vp9|av1)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public async Task<List<MergeOperation>> MergeAsync(List<SeriesGroup> groups, bool dryRun)
     {
@@ -31,14 +37,15 @@ public class SeriesMerger(
 
         foreach (var group in groups)
         {
-            if (group.CanonicalFolder is null) continue;
+            if (group.CanonicalFolder is null)
+                continue;
 
-            foreach (var dupeFolder in group.DuplicateFolders)
-            {
-                var ops = await MergeFolderAsync(dupeFolder, group.CanonicalFolder, dryRun);
-                allOperations.AddRange(ops);
-                group.PlannedOperations.AddRange(ops);
-            }
+            var ops = GetGroupMediaKind(group) == MediaKind.Movie
+                ? await MergeMovieGroupAsync(group, dryRun)
+                : await MergeTelevisionGroupAsync(group, dryRun);
+
+            allOperations.AddRange(ops);
+            group.PlannedOperations.AddRange(ops);
         }
 
         logger.LogInformation("Total merge operations: {Count} (dryRun={DryRun})",
@@ -47,11 +54,32 @@ public class SeriesMerger(
         return allOperations;
     }
 
+    public async Task<List<MergeOperation>> FlattenMovieFoldersAsync(IEnumerable<MediaItem> items, bool dryRun)
+    {
+        var allOperations = new List<MergeOperation>();
+
+        foreach (var item in items.Where(static item => item.Kind == MediaKind.Movie))
+        {
+            var operations = await FlattenMovieFolderAsync(item, dryRun);
+            allOperations.AddRange(operations);
+        }
+
+        if (allOperations.Count > 0)
+        {
+            logger.LogInformation(
+                "Total movie folder flatten operations: {Count} (dryRun={DryRun})",
+                allOperations.Count,
+                dryRun);
+        }
+
+        return allOperations;
+    }
+
     public async Task<List<MergeOperation>> MergeSimilarSubfoldersAsync(IEnumerable<MediaItem> items, bool dryRun)
     {
         var allOperations = new List<MergeOperation>();
 
-        foreach (var item in items)
+        foreach (var item in items.Where(static item => item.Kind != MediaKind.Movie))
         {
             var operations = await MergeEquivalentSeasonFoldersAsync(item, dryRun);
             allOperations.AddRange(operations);
@@ -66,6 +94,111 @@ public class SeriesMerger(
         }
 
         return allOperations;
+    }
+
+    private async Task<List<MergeOperation>> MergeTelevisionGroupAsync(SeriesGroup group, bool dryRun)
+    {
+        var allOperations = new List<MergeOperation>();
+
+        foreach (var dupeFolder in group.DuplicateFolders)
+        {
+            var ops = await MergeFolderAsync(dupeFolder, group.CanonicalFolder!, dryRun);
+            allOperations.AddRange(ops);
+        }
+
+        return allOperations;
+    }
+
+    private async Task<List<MergeOperation>> MergeMovieGroupAsync(SeriesGroup group, bool dryRun)
+    {
+        var operations = new List<MergeOperation>();
+        var libraryRoot = GetLibraryRoot(group.CanonicalFolder!);
+        var candidates = group.AllFolders
+            .SelectMany(folder => folder.VideoFiles)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(BuildMovieCandidate)
+            .ToList();
+
+        if (candidates.Count == 0)
+            return operations;
+
+        var winner = candidates
+            .OrderByDescending(static candidate => candidate.ResolutionValue)
+            .ThenByDescending(static candidate => candidate.CodecRank)
+            .ThenByDescending(static candidate => candidate.FileSize)
+            .ThenByDescending(static candidate => candidate.ModifiedDate)
+            .First();
+
+        var winnerDestination = Path.Combine(libraryRoot, Path.GetFileName(winner.Path));
+
+        logger.LogInformation(
+            "Flattening duplicate movie '{Movie}' to '{DestinationFile}'",
+            group.CanonicalName,
+            Path.GetFileName(winnerDestination));
+
+        if (!string.Equals(winner.Path, winnerDestination, StringComparison.OrdinalIgnoreCase)
+            && !File.Exists(winnerDestination))
+        {
+            operations.AddRange(await fileMover.MoveFileAsync(winner.Path, winnerDestination, dryRun));
+        }
+
+        foreach (var candidate in candidates.Where(candidate => !string.Equals(candidate.Path, winner.Path, StringComparison.OrdinalIgnoreCase)))
+        {
+            logger.LogInformation("{Action} duplicate movie file: {File}",
+                dryRun ? "Would delete" : "Deleting",
+                Path.GetFileName(candidate.Path));
+
+            operations.AddRange(await fileMover.DeleteFileAsync(candidate.Path, dryRun, OperationType.DeleteDuplicate));
+        }
+
+        foreach (var folder in group.AllFolders)
+        {
+            if (CanDeleteMergedFolder(folder.Path, operations, dryRun))
+            {
+                var deleteOp = new MergeOperation(folder.Path, string.Empty, OperationType.Delete, dryRun);
+                operations.Add(deleteOp);
+
+                if (!dryRun)
+                {
+                    DeleteDirectoryRobust(folder.Path);
+                    await transactionLog.LogAsync(deleteOp);
+                }
+            }
+        }
+
+        return operations;
+    }
+
+    private async Task<List<MergeOperation>> FlattenMovieFolderAsync(MediaItem item, bool dryRun)
+    {
+        var operations = new List<MergeOperation>();
+        var libraryRoot = GetLibraryRoot(item);
+
+        foreach (var videoFile in item.VideoFiles.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var destination = Path.Combine(libraryRoot, Path.GetFileName(videoFile));
+            if (string.Equals(videoFile, destination, StringComparison.OrdinalIgnoreCase)
+                || File.Exists(destination))
+            {
+                continue;
+            }
+
+            operations.AddRange(await fileMover.MoveFileAsync(videoFile, destination, dryRun));
+        }
+
+        if (CanDeleteMergedFolder(item.Path, operations, dryRun))
+        {
+            var deleteOp = new MergeOperation(item.Path, string.Empty, OperationType.Delete, dryRun);
+            operations.Add(deleteOp);
+
+            if (!dryRun)
+            {
+                DeleteDirectoryRobust(item.Path);
+                await transactionLog.LogAsync(deleteOp);
+            }
+        }
+
+        return operations;
     }
 
     private async Task<List<MergeOperation>> MergeFolderAsync(
@@ -308,9 +441,105 @@ public class SeriesMerger(
             NormalizedName = Path.GetFileName(folderPath),
             FileCount = videoFiles.Count,
             VideoFiles = videoFiles,
-            SeasonFolders = seasonFolders
+            SeasonFolders = seasonFolders,
+            Kind = seasonFolders.Count > 0 ? MediaKind.TvSeries : MediaKind.Unknown
         };
     }
+
+    private static string GetLibraryRoot(MediaItem item)
+    {
+        return Path.GetDirectoryName(item.Path) ?? item.Path;
+    }
+
+    private MediaKind GetGroupMediaKind(SeriesGroup group)
+    {
+        return group.AllFolders.Any(IsTelevisionLike)
+            ? MediaKind.TvSeries
+            : MediaKind.Movie;
+    }
+
+    private bool IsTelevisionLike(MediaItem item)
+    {
+        if (item.Kind == MediaKind.TvSeries)
+            return true;
+
+        if (item.Kind == MediaKind.Movie)
+            return false;
+
+        if (item.SeasonFolders.Count > 0)
+            return true;
+
+        return item.VideoFiles.Any(videoFile => episodeParser.Parse(videoFile) is not null);
+    }
+
+    private static MovieCandidate BuildMovieCandidate(string filePath)
+    {
+        var fileName = Path.GetFileNameWithoutExtension(filePath);
+        long fileSize = 0;
+        DateTime modifiedDate = DateTime.MinValue;
+
+        try
+        {
+            if (File.Exists(filePath))
+            {
+                var fileInfo = new FileInfo(filePath);
+                fileSize = fileInfo.Length;
+                modifiedDate = fileInfo.LastWriteTimeUtc;
+            }
+        }
+        catch
+        {
+            // Ignore metadata read failures and keep default ranking values.
+        }
+
+        return new MovieCandidate(
+            filePath,
+            ParseResolutionValue(fileName),
+            GetCodecRank(fileName),
+            fileSize,
+            modifiedDate);
+    }
+
+    private static int ParseResolutionValue(string fileName)
+    {
+        var match = ResolutionRegex.Match(fileName);
+        if (!match.Success)
+            return 0;
+
+        return match.Groups[1].Value.ToLowerInvariant() switch
+        {
+            "4k" or "2160p" => 2160,
+            "1080p" => 1080,
+            "720p" => 720,
+            "576p" => 576,
+            "480p" => 480,
+            _ => 0
+        };
+    }
+
+    private static int GetCodecRank(string fileName)
+    {
+        var match = CodecRegex.Match(fileName);
+        if (!match.Success)
+            return 0;
+
+        return match.Groups[1].Value.ToLowerInvariant().Replace(".", string.Empty) switch
+        {
+            "av1" => 5,
+            "x265" or "h265" or "hevc" => 4,
+            "x264" or "h264" or "avc" => 3,
+            "vp9" => 2,
+            "xvid" or "divx" => 1,
+            _ => 0
+        };
+    }
+
+    private sealed record MovieCandidate(
+        string Path,
+        int ResolutionValue,
+        int CodecRank,
+        long FileSize,
+        DateTime ModifiedDate);
 
     private static string ResolvePreferredSeasonFolderPath(string rootPath, List<string> folderPaths, string seasonGroupKey)
     {

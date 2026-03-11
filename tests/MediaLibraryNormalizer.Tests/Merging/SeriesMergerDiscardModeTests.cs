@@ -153,6 +153,98 @@ public class SeriesMergerDiscardModeTests : IDisposable
             && op.Source == season2Dir);
     }
 
+    [Fact]
+    public async Task MergeAsync_MovieDuplicateGroup_KeepsBestMovieMovesItToRootAndDeletesFolders()
+    {
+        var movieRoot = CreateDirectory("MoviesRoot");
+        var betterFolder = Directory.CreateDirectory(Path.Combine(movieRoot, "Dune.Part.Two.2024.1080p.x265")).FullName;
+        var worseFolder = Directory.CreateDirectory(Path.Combine(movieRoot, "Dune.Part.Two.2024.720p.x264")).FullName;
+
+        var betterVideo = CreateFile(betterFolder, "Dune.Part.Two.2024.1080p.x265.mkv");
+        var worseVideo = CreateFile(worseFolder, "Dune.Part.Two.2024.720p.x264.mkv");
+
+        var sut = CreateSut(new NormalizerConfig());
+        var group = new SeriesGroup
+        {
+            SeriesKey = "Dune Part Two|2024",
+            CanonicalName = "Dune Part Two",
+            CanonicalFolder = new MediaItem
+            {
+                Path = betterFolder,
+                OriginalName = Path.GetFileName(betterFolder),
+                NormalizedName = "Dune Part Two",
+                Year = 2024,
+                FileCount = 1,
+                VideoFiles = [betterVideo],
+                Kind = MediaKind.Movie
+            },
+            AllFolders =
+            [
+                new MediaItem
+                {
+                    Path = betterFolder,
+                    OriginalName = Path.GetFileName(betterFolder),
+                    NormalizedName = "Dune Part Two",
+                    Year = 2024,
+                    FileCount = 1,
+                    VideoFiles = [betterVideo],
+                    Kind = MediaKind.Movie
+                },
+                new MediaItem
+                {
+                    Path = worseFolder,
+                    OriginalName = Path.GetFileName(worseFolder),
+                    NormalizedName = "Dune Part Two",
+                    Year = 2024,
+                    FileCount = 1,
+                    VideoFiles = [worseVideo],
+                    Kind = MediaKind.Movie
+                }
+            ],
+            MatchMethod = MatchMethod.ExactKey
+        };
+
+        var ops = await sut.MergeAsync([group], dryRun: true);
+
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Move
+            && op.Source == betterVideo
+            && op.Destination == Path.Combine(movieRoot, Path.GetFileName(betterVideo)));
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.DeleteDuplicate
+            && op.Source == worseVideo);
+        Assert.Contains(ops, op => op.Type == OperationType.Delete && op.Source == betterFolder);
+        Assert.Contains(ops, op => op.Type == OperationType.Delete && op.Source == worseFolder);
+    }
+
+    [Fact]
+    public async Task FlattenMovieFoldersAsync_MovesMovieToRootAndDeletesFolder()
+    {
+        var movieRoot = CreateDirectory("StandaloneMovies");
+        var movieFolder = Directory.CreateDirectory(Path.Combine(movieRoot, "Arrival.2016")).FullName;
+        var movieVideo = CreateFile(movieFolder, "Arrival.2016.1080p.x265.mkv");
+
+        var sut = CreateSut(new NormalizerConfig());
+        var item = new MediaItem
+        {
+            Path = movieFolder,
+            OriginalName = "Arrival.2016",
+            NormalizedName = "Arrival",
+            Year = 2016,
+            FileCount = 1,
+            VideoFiles = [movieVideo],
+            Kind = MediaKind.Movie
+        };
+
+        var ops = await sut.FlattenMovieFoldersAsync([item], dryRun: true);
+
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Move
+            && op.Source == movieVideo
+            && op.Destination == Path.Combine(movieRoot, Path.GetFileName(movieVideo)));
+        Assert.Contains(ops, op => op.Type == OperationType.Delete && op.Source == movieFolder);
+    }
+
     private SeriesMerger CreateSut(NormalizerConfig config)
     {
         var detector = new MediaFileDetector();

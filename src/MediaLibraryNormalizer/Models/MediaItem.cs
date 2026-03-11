@@ -1,7 +1,7 @@
 namespace MediaLibraryNormalizer.Models;
 
 /// <summary>
-/// Represents a top-level series folder in the media library.
+/// Represents a top-level media folder in the library.
 /// </summary>
 public class MediaItem
 {
@@ -31,4 +31,17 @@ public class MediaItem
 
     /// <summary>Whether the original folder name is an _UNPACK_ variant.</summary>
     public bool IsUnpackFolder { get; set; }
+
+    /// <summary>The detected media kind for this folder.</summary>
+    public MediaKind Kind { get; set; } = MediaKind.Unknown;
+}
+
+/// <summary>
+/// High-level media kind detected for a library item.
+/// </summary>
+public enum MediaKind
+{
+    Unknown,
+    TvSeries,
+    Movie
 }

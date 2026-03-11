@@ -74,6 +74,20 @@ public class SeriesMatcher(
             {
                 if (matched.Contains(j)) continue;
 
+                if (singles[i].Item.Kind != MediaKind.Unknown
+                    && singles[j].Item.Kind != MediaKind.Unknown
+                    && singles[i].Item.Kind != singles[j].Item.Kind)
+                {
+                    continue;
+                }
+
+                if (singles[i].Item.Year.HasValue
+                    && singles[j].Item.Year.HasValue
+                    && singles[i].Item.Year.Value != singles[j].Item.Year.Value)
+                {
+                    continue;
+                }
+
                 // Token pre-filter: skip if no tokens overlap
                 if (!TokensOverlap(singles[i].Item.NormalizedName, singles[j].Item.NormalizedName))
                     continue;
