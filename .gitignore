@@ -1,0 +1,41 @@
+# Build outputs
+bin/
+obj/
+
+# VS / VS Code
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Test results / coverage
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+coverage/
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+# Logs
+*.log
+
+# OS files
+[Tt]humbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# Tools / local
+*.local.json
+*.secret.json
+.env
+
+# Rider / JetBrains
+.idea/
+*.sln.iml

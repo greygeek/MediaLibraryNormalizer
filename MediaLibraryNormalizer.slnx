@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MediaLibraryNormalizer.Cli/MediaLibraryNormalizer.Cli.csproj" />
+    <Project Path="src/MediaLibraryNormalizer.Desktop/MediaLibraryNormalizer.Desktop.csproj" />
+    <Project Path="src/MediaLibraryNormalizer/MediaLibraryNormalizer.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MediaLibraryNormalizer.Tests/MediaLibraryNormalizer.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,252 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MediaLibraryNormalizer.Desktop.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="900"
+        x:Class="MediaLibraryNormalizer.Desktop.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+    Title="Media Library Normalizer"
+    Width="1400"
+    Height="900"
+    MinWidth="1100"
+    MinHeight="700">
+
+    <Design.DataContext>
+        <!-- This only sets the DataContext for the previewer in an IDE,
+             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
+        <vm:MainWindowViewModel/>
+    </Design.DataContext>
+
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="16">
+        <Border Grid.Row="0" Padding="20" CornerRadius="12" Background="{DynamicResource SystemControlAcrylicWindowBrush}">
+            <StackPanel Spacing="6">
+                <TextBlock Text="Media Library Normalizer" FontSize="28" FontWeight="Bold"/>
+                <TextBlock Text="Avalonia desktop shell for previewing and executing the existing normalization pipeline." Opacity="0.78"/>
+                <TextBlock Text="{Binding StatusMessage}" FontWeight="SemiBold"/>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1" Margin="0,16,0,0" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="8">
+                    <TextBlock Text="Library Path" FontWeight="SemiBold"/>
+                    <TextBox Text="{Binding LibraryPath}" Watermark="F:\TV or another library root"/>
+                </StackPanel>
+
+                <StackPanel Grid.Row="0" Grid.Column="1" Margin="16,0,0,0" Spacing="8" VerticalAlignment="Bottom">
+                    <Button Command="{Binding PreviewCommand}" Content="Run Dry Run" MinWidth="140"/>
+                    <Button Command="{Binding MergeCommand}" Content="Run Approved Live Merge" MinWidth="200" Classes="accent"/>
+                </StackPanel>
+
+                <WrapPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,16,0,0" ItemWidth="220" Orientation="Horizontal">
+                    <CheckBox Content="Exact matches with files only" IsChecked="{Binding ExactMatchesWithFilesOnly}" Margin="0,0,16,8"/>
+                    <CheckBox Content="Discard inferior duplicates" IsChecked="{Binding DiscardInferiorDuplicates}" Margin="0,0,16,8"/>
+                    <CheckBox Content="Use AI verification" IsChecked="{Binding UseAi}" Margin="0,0,16,8"/>
+                    <CheckBox Content="Use hashing" IsChecked="{Binding UseHash}" Margin="0,0,16,8"/>
+                    <CheckBox Content="Verbose logging" IsChecked="{Binding Verbose}" Margin="0,0,16,8"/>
+                    <CheckBox Content="Delete sample files" IsChecked="{Binding DeleteSamples}" Margin="0,0,16,8"/>
+                </WrapPanel>
+
+                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Margin="0,12,0,0" Text="{Binding LastRunSummary}" Opacity="0.75"/>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2" Margin="0,16,0,0" ColumnDefinitions="*,*,*,*,*" ColumnSpacing="12">
+            <Border Grid.Column="0" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="Mode" Opacity="0.7"/>
+                    <TextBlock Text="{Binding LastRunMode}" FontSize="20" FontWeight="Bold"/>
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="Folders" Opacity="0.7"/>
+                    <TextBlock Text="{Binding TotalFolders}" FontSize="20" FontWeight="Bold"/>
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="2" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="Duplicate Groups" Opacity="0.7"/>
+                    <TextBlock Text="{Binding DuplicateGroupCount}" FontSize="20" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding SelectedDuplicateGroupCount, StringFormat='Eligible {0}'}" Opacity="0.7"/>
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="3" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="Approved Groups" Opacity="0.7"/>
+                    <TextBlock Text="{Binding ApprovedDuplicateGroupCount}" FontSize="20" FontWeight="Bold"/>
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="4" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="Errors" Opacity="0.7"/>
+                    <TextBlock Text="{Binding ErrorCount}" FontSize="20" FontWeight="Bold"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <TabControl Grid.Row="3" Margin="0,16,0,0">
+            <TabItem Header="Summary">
+                <Grid Margin="0,12,0,0" RowDefinitions="*">
+                    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                        <Border Grid.Column="0" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Run Output" FontWeight="Bold" FontSize="18"/>
+                                <TextBlock Text="{Binding ReportPath}" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding TransactionLogPath}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="1" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Additional Metrics" FontWeight="Bold" FontSize="18"/>
+                                <TextBlock Text="{Binding TotalFiles, StringFormat='Video files: {0}'}"/>
+                                <TextBlock Text="{Binding UnpackFolderCount, StringFormat='UNPACK folders: {0}'}"/>
+                                <TextBlock Text="{Binding EmptyFolderCount, StringFormat='Empty folders: {0}'}"/>
+                                <TextBlock Text="{Binding ApprovedCleanupFolderCount, StringFormat='Approved-folder cleanup: {0}'}"/>
+                                <TextBlock Text="{Binding GlobalCleanupSweepFolderCount, StringFormat='Global cleanup sweep: {0}'}"/>
+                                <TextBlock Text="{Binding CleanupSummary}" Opacity="0.72" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                        </Grid>
+                    </ScrollViewer>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Review &amp; Approval">
+                <Grid Margin="0,12,0,0" ColumnDefinitions="2*,3*" ColumnSpacing="16" MinHeight="0">
+                    <Border Grid.Column="0" Padding="8" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1" MinHeight="0">
+                        <Grid RowDefinitions="Auto,Auto,Auto,*">
+                            <TextBlock Grid.Row="0" Text="{Binding DuplicateGroupsHeader}" Margin="8" FontSize="18" FontWeight="Bold"/>
+                            <TextBlock Grid.Row="1" Margin="8,0,8,8" Text="{Binding ReviewQueueSummary}" Opacity="0.75" TextWrapping="Wrap"/>
+                            <WrapPanel Grid.Row="2" Margin="8,0,8,8" Orientation="Horizontal">
+                                <Button Command="{Binding ApproveSelectedGroupCommand}" Content="Approve selected" Margin="0,0,8,8"/>
+                                <Button Command="{Binding RemoveSelectedGroupCommand}" Content="Remove selected" Margin="0,0,8,8"/>
+                                <Button Command="{Binding ApproveAllActionableCommand}" Content="Approve all eligible" Margin="0,0,8,8"/>
+                                <Button Command="{Binding ClearApprovedGroupsCommand}" Content="Clear approvals" Margin="0,0,8,8"/>
+                            </WrapPanel>
+                            <ListBox Grid.Row="3" MinHeight="0" ScrollViewer.VerticalScrollBarVisibility="Auto" ItemsSource="{Binding DuplicateGroups}" SelectedItem="{Binding SelectedDuplicateGroup}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:DuplicateGroupViewModel">
+                                        <Border Margin="4" Padding="8" CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                                            <StackPanel Spacing="4">
+                                                <DockPanel>
+                                                    <TextBlock DockPanel.Dock="Left" Text="{Binding DisplayName}" FontWeight="SemiBold"/>
+                                                    <Border DockPanel.Dock="Right" Padding="8,2" CornerRadius="999" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                                                        <TextBlock Text="{Binding ReviewStatus}" FontSize="11"/>
+                                                    </Border>
+                                                </DockPanel>
+                                                <TextBlock Text="{Binding MatchSummary}" Opacity="0.78" TextWrapping="Wrap"/>
+                                                <TextBlock Text="{Binding EligibilitySummary}" FontSize="12" Opacity="0.72" TextWrapping="Wrap"/>
+                                                <TextBlock Text="{Binding IssueSummary}" FontSize="12" Opacity="0.85" TextWrapping="Wrap"/>
+                                                <TextBlock Text="{Binding DuplicateSummary}" FontSize="12" Opacity="0.65" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Column="1" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1" MinHeight="0">
+                        <Grid RowDefinitions="*" MinHeight="0">
+                            <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Spacing="12">
+                                <TextBlock Text="{Binding SelectedGroupTitle}" FontSize="22" FontWeight="Bold" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding SelectedGroupMatchSummary}" Opacity="0.78" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding SelectedGroupReviewStatus}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding SelectedGroupEligibilitySummary}" Opacity="0.72" TextWrapping="Wrap"/>
+                                <WrapPanel Orientation="Horizontal">
+                                    <Button Command="{Binding ApproveSelectedGroupCommand}" Content="Approve for live merge" Margin="0,0,8,8"/>
+                                    <Button Command="{Binding RemoveSelectedGroupCommand}" Content="Remove from queue" Margin="0,0,8,8"/>
+                                </WrapPanel>
+                                <TextBlock Text="{Binding SelectedGroupCanonicalSummary}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding SelectedGroupCanonicalPath}" Opacity="0.7" TextWrapping="Wrap"/>
+
+                                <TextBlock Text="Duplicate folders" FontSize="18" FontWeight="Bold" Margin="0,8,0,0"/>
+                                <ItemsControl ItemsSource="{Binding SelectedGroupDuplicates}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:FolderItemViewModel">
+                                            <Border Margin="0,0,0,8" Padding="12" CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                                                <StackPanel Spacing="4">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding FileCountText}" Opacity="0.75"/>
+                                                    <TextBlock Text="{Binding Path}" Opacity="0.65" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Text="Folder-level issues" FontSize="18" FontWeight="Bold" Margin="0,8,0,0"/>
+                                <TextBlock Text="{Binding SelectedGroupIssuesSummary}" Opacity="0.72" TextWrapping="Wrap"/>
+                                <ItemsControl ItemsSource="{Binding SelectedGroupIssues}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ReviewIssueViewModel">
+                                            <Border Margin="0,0,0,8" Padding="12" CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                                                <StackPanel Spacing="4">
+                                                    <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding FolderPath}" Opacity="0.75" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Operations">
+                <Grid Margin="0,12,0,0" RowDefinitions="*" MinHeight="0">
+                    <Border Grid.Row="0" Padding="8" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1" MinHeight="0">
+                        <ListBox MinHeight="0" ScrollViewer.VerticalScrollBarVisibility="Auto" ItemsSource="{Binding Operations}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:OperationItemViewModel">
+                                    <StackPanel Margin="8,6">
+                                        <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding Source}" Opacity="0.7" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding Destination}" Opacity="0.7" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Activity">
+                <Grid Margin="0,12,0,0" RowDefinitions="*" MinHeight="0">
+                    <Border Grid.Row="0" Padding="8" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1" MinHeight="0">
+                        <ListBox MinHeight="0" ScrollViewer.VerticalScrollBarVisibility="Auto" ItemsSource="{Binding ActivityLog}"/>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Errors">
+                <Grid Margin="0,12,0,0" RowDefinitions="*" MinHeight="0">
+                    <Border Grid.Row="0" Padding="8" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1" MinHeight="0">
+                        <ListBox MinHeight="0" ScrollViewer.VerticalScrollBarVisibility="Auto" ItemsSource="{Binding ReviewIssues}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ReviewIssueViewModel">
+                                    <StackPanel Margin="8,6">
+                                        <TextBlock Text="{Binding GroupName}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding Summary}" Opacity="0.85" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding FolderPath}" Opacity="0.7" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <TextBlock Grid.Row="4" Margin="0,12,0,0" Text="The desktop shell reuses the existing normalization core and writes the same report and transaction files as the CLI." Opacity="0.7"/>
+    </Grid>
+
+</Window>

@@ -1,0 +1,25 @@
+{
+    // Root library path. Usually supplied via CLI, but can be set here as a default.
+    "LibraryPath": "F:\\TV",
+    // Matching thresholds
+    "FuzzyThreshold": 92,
+    "AiThreshold": 85,
+    // Hashing / performance
+    "HashSizeMB": 1,
+    "MaxConcurrency": 8,
+    // Behavior flags
+    "DeleteSamples": false,
+    "DryRun": true,
+    "Merge": false,
+    "ExactMatchesWithFilesOnly": false,
+    "DiscardInferiorDuplicates": false,
+    "UseAi": false,
+    "UseHash": false,
+    "Verbose": false,
+    "UndoFile": null,
+    // AI settings
+    // Prefer setting the API key via environment variable: NORMALIZER_AI_KEY
+    "AiEndpoint": "https://api.openai.com/v1/chat/completions",
+    "AiApiKey": null,
+    "AiModel": "gpt-4o-mini"
+}
