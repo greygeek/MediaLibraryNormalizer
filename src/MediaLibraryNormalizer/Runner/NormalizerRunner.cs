@@ -24,6 +24,7 @@ public class NormalizerRunner : INormalizerRunner
         using var serviceProvider = ServiceRegistration.BuildServiceProvider(config);
         var logger = serviceProvider.GetRequiredService<ILogger<NormalizerRunner>>();
         var scanner = serviceProvider.GetRequiredService<ILibraryScanner>();
+        var fileDetector = serviceProvider.GetRequiredService<IMediaFileDetector>();
         var normalizer = serviceProvider.GetRequiredService<INameNormalizer>();
         var episodeParser = serviceProvider.GetRequiredService<IEpisodeParser>();
         var matcher = serviceProvider.GetRequiredService<ISeriesMatcher>();
@@ -40,9 +41,10 @@ public class NormalizerRunner : INormalizerRunner
 
         var scanResult = new ScanResult();
         var items = scanner.Scan(config.LibraryPath).ToList();
+        var topLevelVideoFileCount = CountTopLevelVideoFiles(config.LibraryPath, fileDetector);
         scanResult.AllItems = items;
-        scanResult.TotalFolders = items.Count;
-        scanResult.TotalFiles = items.Sum(i => i.FileCount);
+        scanResult.TotalFolders = items.Count + (topLevelVideoFileCount > 0 ? 1 : 0);
+        scanResult.TotalFiles = items.Sum(i => i.FileCount) + topLevelVideoFileCount;
         scanResult.UnpackFolders = items.Where(i => i.IsUnpackFolder).ToList();
 
         logger.LogInformation(
@@ -116,6 +118,11 @@ public class NormalizerRunner : INormalizerRunner
             .ToList();
         var movieFlattenOperations = await merger.FlattenMovieFoldersAsync(standaloneMovies, config.DryRun);
         allOperations.AddRange(movieFlattenOperations);
+
+        progress?.Report("Deduplicating top-level movie files...");
+        cancellationToken.ThrowIfCancellationRequested();
+        var topLevelMovieDedupeOperations = await merger.DeduplicateTopLevelMovieFilesAsync(config.LibraryPath, config.DryRun);
+        allOperations.AddRange(topLevelMovieDedupeOperations);
 
         if (approvedSeriesKeys is not null && mergeGroups.Count > 0)
         {
@@ -255,5 +262,14 @@ public class NormalizerRunner : INormalizerRunner
         return item.VideoFiles.Count > 0
             ? MediaKind.Movie
             : MediaKind.Unknown;
+    }
+
+    private static int CountTopLevelVideoFiles(string libraryPath, IMediaFileDetector fileDetector)
+    {
+        if (!Directory.Exists(libraryPath))
+            return 0;
+
+        return Directory.EnumerateFiles(libraryPath, "*.*", SearchOption.TopDirectoryOnly)
+            .Count(fileDetector.IsVideoFile);
     }
 }

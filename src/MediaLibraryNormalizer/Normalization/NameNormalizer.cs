@@ -57,6 +57,10 @@ public partial class NameNormalizer : INameNormalizer
     [GeneratedRegex(@"\s*-\s*[A-Za-z0-9]+$")]
     private static partial Regex ReleaseGroupRegex();
 
+    // SABnzbd and similar tools may append ".1" or " (1)" to make names unique.
+    [GeneratedRegex(@"(?:\.\d{1,3}|\s*\(\d{1,3}\))$")]
+    private static partial Regex SabSuffixRegex();
+
     public NormalizedTitle Normalize(string name, bool isFilename = false)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -65,6 +69,8 @@ public partial class NameNormalizer : INameNormalizer
         // Step 1: remove file extension (filenames only)
         if (isFilename)
             name = Path.GetFileNameWithoutExtension(name);
+
+        name = StripSabUniqueSuffix(name);
 
         // Remove illegal Windows characters
         name = IllegalCharsRegex().Replace(name, "");
@@ -193,5 +199,21 @@ public partial class NameNormalizer : INameNormalizer
         }
 
         return string.Join(' ', words);
+    }
+
+    private static string StripSabUniqueSuffix(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return name;
+
+        var hasMetadataContext = YearRegex().IsMatch(name)
+            || ResolutionRegex().IsMatch(name)
+            || CodecRegex().IsMatch(name)
+            || SourceRegex().IsMatch(name);
+
+        if (!hasMetadataContext)
+            return name;
+
+        return SabSuffixRegex().Replace(name, "");
     }
 }

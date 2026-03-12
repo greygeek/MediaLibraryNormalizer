@@ -1,6 +1,7 @@
 using MediaLibraryNormalizer.Matching;
 using MediaLibraryNormalizer.Config;
 using MediaLibraryNormalizer.Models;
+using MediaLibraryNormalizer.Normalization;
 using MediaLibraryNormalizer.Parser;
 using MediaLibraryNormalizer.Scanner;
 using Microsoft.Extensions.Logging;
@@ -16,6 +17,7 @@ public class SeriesMerger(
     IFileMover fileMover,
     IMediaFileDetector fileDetector,
     ITransactionLog transactionLog,
+    INameNormalizer nameNormalizer,
     IEpisodeParser episodeParser,
     IDuplicateDetector duplicateDetector,
     NormalizerConfig config,
@@ -73,6 +75,83 @@ public class SeriesMerger(
         }
 
         return allOperations;
+    }
+
+    public async Task<List<MergeOperation>> DeduplicateTopLevelMovieFilesAsync(string libraryRoot, bool dryRun)
+    {
+        var operations = new List<MergeOperation>();
+
+        if (!Directory.Exists(libraryRoot))
+            return operations;
+
+        var groups = Directory.EnumerateFiles(libraryRoot, "*.*", SearchOption.TopDirectoryOnly)
+            .Where(filePath => fileDetector.IsVideoFile(filePath)
+                              || fileDetector.IsSubtitleFile(filePath)
+                              || fileDetector.IsMovieArtifactFile(filePath))
+            .Select(filePath => new
+            {
+                Path = filePath,
+                Key = nameNormalizer.Normalize(Path.GetFileName(filePath), isFilename: true).SeriesKey
+            })
+            .Where(static item => !string.IsNullOrWhiteSpace(item.Key))
+            .GroupBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Any(item => fileDetector.IsVideoFile(item.Path)))
+            .ToList();
+
+        foreach (var group in groups)
+        {
+            var candidates = group
+                .Where(item => fileDetector.IsVideoFile(item.Path))
+                .Select(item => BuildMovieCandidate(item.Path))
+                .OrderByDescending(static candidate => candidate.ResolutionValue)
+                .ThenByDescending(static candidate => candidate.CodecRank)
+                .ThenByDescending(static candidate => candidate.FileSize)
+                .ThenByDescending(static candidate => candidate.ModifiedDate)
+                .ToList();
+
+            if (candidates.Count == 0)
+                continue;
+
+            var winner = candidates.First();
+
+            foreach (var loser in candidates.Skip(1))
+            {
+                logger.LogInformation("{Action} duplicate top-level movie file: {File}",
+                    dryRun ? "Would delete" : "Deleting",
+                    Path.GetFileName(loser.Path));
+
+                operations.AddRange(await DeleteSingleFileAsync(loser.Path, dryRun, OperationType.DeleteDuplicate));
+            }
+
+            var preferredDestination = Path.Combine(libraryRoot, GetPreferredMovieFileName(winner.Path));
+            if (!string.Equals(winner.Path, preferredDestination, StringComparison.OrdinalIgnoreCase)
+                && !File.Exists(preferredDestination))
+            {
+                operations.AddRange(await MoveMovieVideoAndMatchingSubtitlesAsync(winner.Path, preferredDestination, dryRun));
+            }
+
+            foreach (var artifactFile in group
+                         .Select(item => item.Path)
+                         .Where(fileDetector.IsMovieArtifactFile)
+                         .Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                logger.LogInformation("{Action} movie artifact file: {File}",
+                    dryRun ? "Would delete" : "Deleting",
+                    Path.GetFileName(artifactFile));
+
+                operations.AddRange(await DeleteSingleFileAsync(artifactFile, dryRun, OperationType.DeleteDuplicate));
+            }
+        }
+
+        if (operations.Count > 0)
+        {
+            logger.LogInformation(
+                "Total top-level movie dedupe operations: {Count} (dryRun={DryRun})",
+                operations.Count,
+                dryRun);
+        }
+
+        return operations;
     }
 
     public async Task<List<MergeOperation>> MergeSimilarSubfoldersAsync(IEnumerable<MediaItem> items, bool dryRun)
@@ -139,7 +218,7 @@ public class SeriesMerger(
         if (!string.Equals(winner.Path, winnerDestination, StringComparison.OrdinalIgnoreCase)
             && !File.Exists(winnerDestination))
         {
-            operations.AddRange(await fileMover.MoveFileAsync(winner.Path, winnerDestination, dryRun));
+            operations.AddRange(await MoveMovieVideoAndMatchingSubtitlesAsync(winner.Path, winnerDestination, dryRun));
         }
 
         foreach (var candidate in candidates.Where(candidate => !string.Equals(candidate.Path, winner.Path, StringComparison.OrdinalIgnoreCase)))
@@ -148,7 +227,13 @@ public class SeriesMerger(
                 dryRun ? "Would delete" : "Deleting",
                 Path.GetFileName(candidate.Path));
 
-            operations.AddRange(await fileMover.DeleteFileAsync(candidate.Path, dryRun, OperationType.DeleteDuplicate));
+            operations.AddRange(await DeleteSingleFileAsync(candidate.Path, dryRun, OperationType.DeleteDuplicate));
+        }
+
+        foreach (var folder in group.AllFolders)
+        {
+            operations.AddRange(await MoveSubtitleFilesToRootAsync(folder.Path, libraryRoot, dryRun));
+            operations.AddRange(await DeleteMovieArtifactFilesAsync(folder.Path, dryRun));
         }
 
         foreach (var folder in group.AllFolders)
@@ -183,8 +268,11 @@ public class SeriesMerger(
                 continue;
             }
 
-            operations.AddRange(await fileMover.MoveFileAsync(videoFile, destination, dryRun));
+            operations.AddRange(await MoveMovieVideoAndMatchingSubtitlesAsync(videoFile, destination, dryRun));
         }
+
+        operations.AddRange(await MoveSubtitleFilesToRootAsync(item.Path, libraryRoot, dryRun));
+        operations.AddRange(await DeleteMovieArtifactFilesAsync(item.Path, dryRun));
 
         if (CanDeleteMergedFolder(item.Path, operations, dryRun))
         {
@@ -449,6 +537,130 @@ public class SeriesMerger(
     private static string GetLibraryRoot(MediaItem item)
     {
         return Path.GetDirectoryName(item.Path) ?? item.Path;
+    }
+
+    private static string GetPreferredMovieFileName(string filePath)
+    {
+        var extension = Path.GetExtension(filePath);
+        var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(filePath);
+        var cleanedBaseName = Regex.Replace(fileNameWithoutExtension, @"(?:\.\d{1,3}|\s*\(\d{1,3}\))$", string.Empty);
+        return cleanedBaseName + extension;
+    }
+
+    private async Task<List<MergeOperation>> MoveMovieVideoAndMatchingSubtitlesAsync(string sourceVideoPath, string destinationVideoPath, bool dryRun)
+    {
+        var operations = new List<MergeOperation>();
+        var destinationDirectory = Path.GetDirectoryName(destinationVideoPath)!;
+
+        if (!Directory.Exists(destinationDirectory))
+        {
+            var createDirectoryOperation = new MergeOperation(destinationDirectory, destinationDirectory, OperationType.CreateDirectory, dryRun);
+            operations.Add(createDirectoryOperation);
+
+            if (!dryRun)
+            {
+                Directory.CreateDirectory(destinationDirectory);
+                await transactionLog.LogAsync(createDirectoryOperation);
+            }
+        }
+
+        operations.AddRange(await MoveSingleFileAsync(sourceVideoPath, destinationVideoPath, dryRun));
+
+        var sourceDirectory = Path.GetDirectoryName(sourceVideoPath);
+        var sourceBaseName = Path.GetFileNameWithoutExtension(sourceVideoPath);
+        var destinationBaseName = Path.GetFileNameWithoutExtension(destinationVideoPath);
+
+        if (sourceDirectory is null || !Directory.Exists(sourceDirectory))
+            return operations;
+
+        foreach (var subtitlePath in Directory.EnumerateFiles(sourceDirectory, "*.*", SearchOption.TopDirectoryOnly)
+                     .Where(fileDetector.IsSubtitleFile)
+                     .Where(path => string.Equals(Path.GetFileNameWithoutExtension(path), sourceBaseName, StringComparison.OrdinalIgnoreCase)))
+        {
+            var subtitleDestination = Path.Combine(destinationDirectory, destinationBaseName + Path.GetExtension(subtitlePath));
+            if (File.Exists(subtitleDestination))
+                continue;
+
+            operations.AddRange(await MoveSingleFileAsync(subtitlePath, subtitleDestination, dryRun));
+        }
+
+        return operations;
+    }
+
+    private async Task<List<MergeOperation>> MoveSubtitleFilesToRootAsync(string sourceFolderPath, string destinationRootPath, bool dryRun)
+    {
+        var operations = new List<MergeOperation>();
+
+        if (!Directory.Exists(sourceFolderPath))
+            return operations;
+
+        foreach (var subtitlePath in Directory.EnumerateFiles(sourceFolderPath, "*.*", SearchOption.AllDirectories)
+                     .Where(fileDetector.IsSubtitleFile))
+        {
+            var destinationPath = Path.Combine(destinationRootPath, Path.GetFileName(subtitlePath));
+
+            if (string.Equals(subtitlePath, destinationPath, StringComparison.OrdinalIgnoreCase)
+                || File.Exists(destinationPath))
+            {
+                continue;
+            }
+
+            operations.AddRange(await MoveSingleFileAsync(subtitlePath, destinationPath, dryRun));
+        }
+
+        return operations;
+    }
+
+    private async Task<List<MergeOperation>> DeleteMovieArtifactFilesAsync(string folderPath, bool dryRun)
+    {
+        var operations = new List<MergeOperation>();
+
+        if (!Directory.Exists(folderPath))
+            return operations;
+
+        foreach (var artifactPath in Directory.EnumerateFiles(folderPath, "*.*", SearchOption.AllDirectories)
+                     .Where(fileDetector.IsMovieArtifactFile))
+        {
+            operations.AddRange(await DeleteSingleFileAsync(artifactPath, dryRun, OperationType.DeleteDuplicate));
+        }
+
+        return operations;
+    }
+
+    private async Task<List<MergeOperation>> MoveSingleFileAsync(string sourcePath, string destinationPath, bool dryRun)
+    {
+        var operations = new List<MergeOperation>();
+        var moveOperation = new MergeOperation(sourcePath, destinationPath, OperationType.Move, dryRun);
+        operations.Add(moveOperation);
+
+        if (!dryRun)
+        {
+            var destinationDirectory = Path.GetDirectoryName(destinationPath);
+            if (!string.IsNullOrWhiteSpace(destinationDirectory) && !Directory.Exists(destinationDirectory))
+            {
+                Directory.CreateDirectory(destinationDirectory);
+            }
+
+            File.Move(sourcePath, destinationPath);
+            await transactionLog.LogAsync(moveOperation);
+        }
+
+        return operations;
+    }
+
+    private async Task<List<MergeOperation>> DeleteSingleFileAsync(string filePath, bool dryRun, OperationType operationType)
+    {
+        var operations = new List<MergeOperation>();
+        var deleteOperation = new MergeOperation(filePath, string.Empty, operationType, dryRun);
+        operations.Add(deleteOperation);
+
+        if (!dryRun)
+        {
+            File.Delete(filePath);
+            await transactionLog.LogAsync(deleteOperation);
+        }
+
+        return operations;
     }
 
     private MediaKind GetGroupMediaKind(SeriesGroup group)

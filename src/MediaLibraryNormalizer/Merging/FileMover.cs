@@ -44,9 +44,10 @@ public class FileMover(
         }
 
         // Move associated files (subtitles, nfo, images)
+        var destinationVideoBaseName = Path.GetFileNameWithoutExtension(destination);
         foreach (var assocFile in fileDetector.FindAssociatedFiles(source))
         {
-            var assocDest = Path.Combine(destDir, Path.GetFileName(assocFile));
+            var assocDest = Path.Combine(destDir, destinationVideoBaseName + Path.GetExtension(assocFile));
             if (File.Exists(assocDest))
             {
                 logger.LogDebug("Skipping associated file (already exists): {File}",

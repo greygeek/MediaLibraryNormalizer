@@ -10,9 +10,19 @@ public class MediaFileDetector : IMediaFileDetector
         ".mkv", ".mp4", ".avi", ".m4v", ".mov", ".ts"
     };
 
+    private static readonly HashSet<string> SubtitleExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".srt", ".ssa", ".ass", ".sub", ".idx"
+    };
+
+    private static readonly HashSet<string> MovieArtifactExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".nfo", ".txt", ".sfv", ".jpg", ".jpeg", ".png"
+    };
+
     private static readonly HashSet<string> AssociatedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".srt", ".ssa", ".ass", ".sub", ".idx", ".nfo", ".jpg", ".png"
+        ".srt", ".ssa", ".ass", ".sub", ".idx", ".nfo", ".jpg", ".jpeg", ".png"
     };
 
     private static readonly string[] SamplePatterns = [".sample.", "-sample", "sample-"];
@@ -27,6 +37,18 @@ public class MediaFileDetector : IMediaFileDetector
     {
         var ext = Path.GetExtension(filePath);
         return AssociatedExtensions.Contains(ext);
+    }
+
+    public bool IsSubtitleFile(string filePath)
+    {
+        var ext = Path.GetExtension(filePath);
+        return SubtitleExtensions.Contains(ext);
+    }
+
+    public bool IsMovieArtifactFile(string filePath)
+    {
+        var ext = Path.GetExtension(filePath);
+        return MovieArtifactExtensions.Contains(ext);
     }
 
     public bool IsSampleFile(string filePath)

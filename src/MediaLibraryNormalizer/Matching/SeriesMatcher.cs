@@ -81,9 +81,11 @@ public class SeriesMatcher(
                     continue;
                 }
 
-                if (singles[i].Item.Year.HasValue
-                    && singles[j].Item.Year.HasValue
-                    && singles[i].Item.Year.Value != singles[j].Item.Year.Value)
+                var leftYear = singles[i].Item.Year;
+                var rightYear = singles[j].Item.Year;
+                if (leftYear.HasValue
+                    && rightYear.HasValue
+                    && leftYear.Value != rightYear.Value)
                 {
                     continue;
                 }

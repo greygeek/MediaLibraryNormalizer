@@ -2,6 +2,7 @@ using MediaLibraryNormalizer.Config;
 using MediaLibraryNormalizer.Matching;
 using MediaLibraryNormalizer.Merging;
 using MediaLibraryNormalizer.Models;
+using MediaLibraryNormalizer.Normalization;
 using MediaLibraryNormalizer.Parser;
 using MediaLibraryNormalizer.Scanner;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -245,6 +246,66 @@ public class SeriesMergerDiscardModeTests : IDisposable
         Assert.Contains(ops, op => op.Type == OperationType.Delete && op.Source == movieFolder);
     }
 
+    [Fact]
+    public async Task DeduplicateTopLevelMovieFilesAsync_StripsSabSuffixAndDeletesInferiorDuplicates()
+    {
+        var movieRoot = CreateDirectory("TopLevelMovies");
+        var canonicalVideo = CreateFile(movieRoot, "Gladiator II 2024 1080p x265.mkv");
+        var duplicateVideo = CreateFile(movieRoot, "Gladiator II 2024 720p x264.1.mp4");
+        var duplicatePoster = CreateFile(movieRoot, "Gladiator II 2024 720p x264.1.jpg");
+
+        var sut = CreateSut(new NormalizerConfig());
+
+        var ops = await sut.DeduplicateTopLevelMovieFilesAsync(movieRoot, dryRun: true);
+
+        Assert.Contains(ops, op => op.Type == OperationType.DeleteDuplicate && op.Source == duplicateVideo);
+        Assert.Contains(ops, op => op.Type == OperationType.DeleteDuplicate && op.Source == duplicatePoster);
+        Assert.DoesNotContain(ops, op => op.Source == canonicalVideo && op.Type == OperationType.DeleteDuplicate);
+    }
+
+    [Fact]
+    public async Task DeduplicateTopLevelMovieFilesAsync_RenamesWinningSabSuffixFileAndSidecars()
+    {
+        var movieRoot = CreateDirectory("TopLevelRename");
+        var winningVideo = CreateFile(movieRoot, "Godzilla x Kong - The New Empire 2024 1080p x265.1.mkv");
+        var winningNfo = CreateFile(movieRoot, "Godzilla x Kong - The New Empire 2024 1080p x265.1.nfo");
+        var winningSubtitle = CreateFile(movieRoot, "Godzilla x Kong - The New Empire 2024 1080p x265.1.srt");
+        var losingVideo = CreateFile(movieRoot, "Godzilla x Kong - The New Empire 2024 720p x264.mp4");
+
+        var sut = CreateSut(new NormalizerConfig());
+
+        var ops = await sut.DeduplicateTopLevelMovieFilesAsync(movieRoot, dryRun: true);
+
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Move
+            && op.Source == winningVideo
+            && op.Destination == Path.Combine(movieRoot, "Godzilla x Kong - The New Empire 2024 1080p x265.mkv"));
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Move
+            && op.Source == winningSubtitle
+            && op.Destination == Path.Combine(movieRoot, "Godzilla x Kong - The New Empire 2024 1080p x265.srt"));
+        Assert.Contains(ops, op => op.Type == OperationType.DeleteDuplicate && op.Source == winningNfo);
+        Assert.Contains(ops, op => op.Type == OperationType.DeleteDuplicate && op.Source == losingVideo);
+    }
+
+    [Fact]
+    public async Task DeduplicateTopLevelMovieFilesAsync_PreservesYearInWinnerFileName()
+    {
+        var movieRoot = CreateDirectory("TopLevelYearRename");
+        var winningVideo = CreateFile(movieRoot, "Gladiator II (2024).1.mkv");
+        var losingVideo = CreateFile(movieRoot, "Gladiator II (2024).mp4");
+
+        var sut = CreateSut(new NormalizerConfig());
+
+        var ops = await sut.DeduplicateTopLevelMovieFilesAsync(movieRoot, dryRun: true);
+
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Move
+            && op.Source == winningVideo
+            && op.Destination == Path.Combine(movieRoot, "Gladiator II (2024).mkv"));
+        Assert.Contains(ops, op => op.Type == OperationType.DeleteDuplicate && op.Source == losingVideo);
+    }
+
     private SeriesMerger CreateSut(NormalizerConfig config)
     {
         var detector = new MediaFileDetector();
@@ -257,6 +318,7 @@ public class SeriesMergerDiscardModeTests : IDisposable
             fileMover,
             detector,
             new TransactionLog(NullLogger<TransactionLog>.Instance),
+            new NameNormalizer(),
             new EpisodeParser(),
             new DuplicateDetector(NullLogger<DuplicateDetector>.Instance),
             config,

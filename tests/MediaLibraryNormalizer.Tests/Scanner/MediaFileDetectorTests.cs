@@ -90,4 +90,42 @@ public class MediaFileDetectorTests
     {
         Assert.False(_sut.IsAssociatedFile(fileName));
     }
+
+    [Theory]
+    [InlineData("show.srt")]
+    [InlineData("show.ass")]
+    [InlineData("show.idx")]
+    public void IsSubtitleFile_SubtitleExtensions_ReturnsTrue(string fileName)
+    {
+        Assert.True(_sut.IsSubtitleFile(fileName));
+    }
+
+    [Theory]
+    [InlineData("show.nfo")]
+    [InlineData("show.jpg")]
+    [InlineData("show.txt")]
+    public void IsSubtitleFile_NonSubtitleExtensions_ReturnsFalse(string fileName)
+    {
+        Assert.False(_sut.IsSubtitleFile(fileName));
+    }
+
+    [Theory]
+    [InlineData("show.nfo")]
+    [InlineData("show.txt")]
+    [InlineData("show.sfv")]
+    [InlineData("show.jpg")]
+    [InlineData("show.jpeg")]
+    [InlineData("show.png")]
+    public void IsMovieArtifactFile_MetadataExtensions_ReturnTrue(string fileName)
+    {
+        Assert.True(_sut.IsMovieArtifactFile(fileName));
+    }
+
+    [Theory]
+    [InlineData("show.srt")]
+    [InlineData("show.mkv")]
+    public void IsMovieArtifactFile_ProtectedExtensions_ReturnFalse(string fileName)
+    {
+        Assert.False(_sut.IsMovieArtifactFile(fileName));
+    }
 }

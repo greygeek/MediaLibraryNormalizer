@@ -11,6 +11,12 @@ public interface IMediaFileDetector
     /// <summary>Returns true if the file is an associated file that should move with a video.</summary>
     bool IsAssociatedFile(string filePath);
 
+    /// <summary>Returns true if the file is a subtitle file that should be preserved.</summary>
+    bool IsSubtitleFile(string filePath);
+
+    /// <summary>Returns true if the file is a movie metadata/artifact file that can be discarded.</summary>
+    bool IsMovieArtifactFile(string filePath);
+
     /// <summary>Returns true if the file is a sample file that should be ignored.</summary>
     bool IsSampleFile(string filePath);
 

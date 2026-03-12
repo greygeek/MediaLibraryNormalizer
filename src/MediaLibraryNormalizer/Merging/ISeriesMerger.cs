@@ -21,4 +21,9 @@ public interface ISeriesMerger
     /// Move movie files from per-movie folders into the library root and remove empty folders.
     /// </summary>
     Task<List<MergeOperation>> FlattenMovieFoldersAsync(IEnumerable<MediaItem> items, bool dryRun);
+
+    /// <summary>
+    /// Deduplicate top-level movie files already located in the library root.
+    /// </summary>
+    Task<List<MergeOperation>> DeduplicateTopLevelMovieFilesAsync(string libraryRoot, bool dryRun);
 }

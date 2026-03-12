@@ -147,7 +147,9 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public string ReviewQueueSummary =>
         _hasFreshPreview
-            ? $"Actionable groups: {SelectedDuplicateGroupCount} • Approved groups: {ApprovedDuplicateGroupCount}"
+            ? RequiresApprovalForMerge
+                ? $"Actionable groups: {SelectedDuplicateGroupCount} • Approved groups: {ApprovedDuplicateGroupCount}"
+                : "No staged approvals required for movie-only operations."
             : "Run a fresh dry run before approving groups for live merge.";
 
     public string LastRunSummary =>
@@ -215,7 +217,9 @@ public partial class MainWindowViewModel : ViewModelBase
         !IsBusy
         && !string.IsNullOrWhiteSpace(LibraryPath)
         && _hasFreshPreview
-        && ApprovedDuplicateGroupCount > 0;
+        && (!RequiresApprovalForMerge || ApprovedDuplicateGroupCount > 0);
+
+    private bool RequiresApprovalForMerge => DuplicateGroups.Any(group => group.CanStage);
 
     private bool CanApproveSelectedGroup() =>
         !IsBusy
@@ -251,7 +255,11 @@ public partial class MainWindowViewModel : ViewModelBase
     private async Task ExecuteRunAsync(bool dryRun)
     {
         IsBusy = true;
-        StatusMessage = dryRun ? "Starting dry run..." : "Starting approved live merge...";
+        StatusMessage = dryRun
+            ? "Starting dry run..."
+            : RequiresApprovalForMerge
+                ? "Starting approved live merge..."
+                : "Starting live merge for movie-only operations...";
         ActivityLog.Clear();
 
         var progress = new Progress<string>(message =>
@@ -273,7 +281,11 @@ public partial class MainWindowViewModel : ViewModelBase
             var result = await Task.Run(() => _runner.RunAsync(config, approvedSeriesKeys, progress));
 
             ApplyResult(result, dryRun);
-            StatusMessage = dryRun ? "Dry run completed. Review and approve groups for live merge." : "Live merge completed.";
+            StatusMessage = dryRun
+                ? RequiresApprovalForMerge
+                    ? "Dry run completed. Review and approve groups for live merge."
+                    : "Dry run completed. Review planned operations, then run live merge."
+                : "Live merge completed.";
             ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Result written to {result.ReportPath}");
         }
         catch (Exception ex)

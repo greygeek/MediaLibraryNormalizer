@@ -115,6 +115,16 @@ public class NameNormalizerTests
         Assert.Equal("Show Name", result.Title);
     }
 
+    [Theory]
+    [InlineData("Gladiator II (2024).1.mkv", "Gladiator II", 2024)]
+    [InlineData("Godzilla x Kong The New Empire 2024 2160p WEB-DL H265 (1).mkv", "Godzilla X Kong The New Empire", 2024)]
+    public void Normalize_Filename_StripsSabUniqueSuffix(string input, string expectedTitle, int expectedYear)
+    {
+        var result = _sut.Normalize(input, isFilename: true);
+        Assert.Equal(expectedTitle, result.Title);
+        Assert.Equal(expectedYear, result.Year);
+    }
+
     // === Acronym preservation ===
 
     [Theory]
