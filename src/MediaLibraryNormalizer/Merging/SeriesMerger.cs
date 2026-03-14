@@ -315,11 +315,11 @@ public class SeriesMerger(
             // Check for duplicate
             if (sourceEpisode is not null)
             {
-                var duplicate = FindDuplicate(sourceEpisode, canonicalEpisodes);
-                if (duplicate is not null)
+                var duplicates = FindDuplicates(sourceEpisode, canonicalEpisodes);
+                if (duplicates.Count > 0)
                 {
                     // Run quality comparison
-                    var dupResult = duplicateDetector.DetectDuplicates([sourceEpisode, duplicate]);
+                    var dupResult = duplicateDetector.DetectDuplicates([sourceEpisode, .. duplicates]);
 
                     if (dupResult.Discard.Any(d => d.FilePath == videoFile))
                     {
@@ -346,36 +346,45 @@ public class SeriesMerger(
                         continue;
                     }
 
-                    // Source is better — the existing file in canonical will remain
-                    // but we move the better file over (if not same path)
-                    if (dupResult.Discard.Any(d => d.FilePath == duplicate.FilePath))
+                    var canonicalDiscards = dupResult.Discard
+                        .Where(discard => duplicates.Any(duplicate =>
+                            string.Equals(duplicate.FilePath, discard.FilePath, StringComparison.OrdinalIgnoreCase)))
+                        .DistinctBy(discard => discard.FilePath)
+                        .ToList();
+
+                    if (canonicalDiscards.Count > 0)
                     {
                         logger.LogDebug("Source file is better quality: {File}",
                             Path.GetFileName(videoFile));
 
                         if (config.DiscardInferiorDuplicates)
                         {
-                            var resolvedCanonicalDuplicatePath = ResolveAccessiblePath(
-                                duplicate.FilePath,
-                                canonical.Path);
+                            foreach (var canonicalDiscard in canonicalDiscards)
+                            {
+                                var resolvedCanonicalDuplicatePath = ResolveAccessiblePath(
+                                    canonicalDiscard.FilePath,
+                                    canonical.Path);
 
-                            logger.LogInformation("{Action} inferior canonical duplicate: {File}",
-                                dryRun ? "Would delete" : "Deleting",
-                                Path.GetFileName(duplicate.FilePath));
+                                logger.LogInformation("{Action} inferior canonical duplicate: {File}",
+                                    dryRun ? "Would delete" : "Deleting",
+                                    Path.GetFileName(canonicalDiscard.FilePath));
 
-                            var deleteOps = await fileMover.DeleteFileAsync(
-                                resolvedCanonicalDuplicatePath,
-                                dryRun,
-                                OperationType.DeleteDuplicate);
-                            operations.AddRange(deleteOps);
-                            canonicalEpisodes.Remove(duplicate);
+                                var deleteOps = await fileMover.DeleteFileAsync(
+                                    resolvedCanonicalDuplicatePath,
+                                    dryRun,
+                                    OperationType.DeleteDuplicate);
+                                operations.AddRange(deleteOps);
+                            }
+
+                            canonicalEpisodes.RemoveAll(existing => canonicalDiscards.Any(discard =>
+                                string.Equals(discard.FilePath, existing.FilePath, StringComparison.OrdinalIgnoreCase)));
                         }
                     }
                 }
             }
 
             // Skip if destination already exists and we don't have a quality winner
-            if (File.Exists(destPath))
+            if (DestinationExists(destPath, operations))
             {
                 logger.LogDebug("Destination exists, skipping: {File}", Path.GetFileName(videoFile));
                 continue;
@@ -450,9 +459,12 @@ public class SeriesMerger(
                     item.OriginalName);
 
                 var mergeOps = await MergeFolderAsync(sourceItem, targetItem, dryRun);
+                var cleanupOps = await DeleteResidualFilesFromMergedFolderAsync(sourcePath, mergeOps, dryRun);
                 operations.AddRange(mergeOps);
+                operations.AddRange(cleanupOps);
 
-                if (CanDeleteMergedFolder(sourcePath, mergeOps, dryRun))
+                var sourceFolderOps = mergeOps.Concat(cleanupOps).ToList();
+                if (CanDeleteMergedFolder(sourcePath, sourceFolderOps, dryRun))
                 {
                     var deleteOp = new MergeOperation(sourcePath, string.Empty, OperationType.Delete, dryRun);
                     operations.Add(deleteOp);
@@ -464,6 +476,36 @@ public class SeriesMerger(
                     }
                 }
             }
+        }
+
+        return operations;
+    }
+
+    private async Task<List<MergeOperation>> DeleteResidualFilesFromMergedFolderAsync(
+        string folderPath,
+        List<MergeOperation> mergeOps,
+        bool dryRun)
+    {
+        var operations = new List<MergeOperation>();
+        var resolvedPath = ResolveAccessibleDirectoryPath(folderPath) ?? folderPath;
+
+        if (!Directory.Exists(resolvedPath))
+            return operations;
+
+        if (!CanRemoveResidualFiles(folderPath, mergeOps, dryRun))
+            return operations;
+
+        var alreadyHandled = mergeOps
+            .Where(op => op.Type is OperationType.Move or OperationType.DeleteDuplicate or OperationType.DeleteSample or OperationType.Delete)
+            .Select(op => op.Source)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var filePath in Directory.EnumerateFiles(resolvedPath, "*.*", SearchOption.AllDirectories))
+        {
+            if (fileDetector.IsVideoFile(filePath) || alreadyHandled.Contains(filePath))
+                continue;
+
+            operations.AddRange(await DeleteSingleFileAsync(filePath, dryRun, OperationType.DeleteDuplicate));
         }
 
         return operations;
@@ -505,14 +547,17 @@ public class SeriesMerger(
 
     private static IEnumerable<string> DiscoverSeasonFolders(MediaItem item)
     {
-        var knownFolders = item.SeasonFolders;
-        if (knownFolders.Count > 0)
-            return knownFolders;
+        var folderPaths = new HashSet<string>(item.SeasonFolders, StringComparer.OrdinalIgnoreCase);
 
         if (!Directory.Exists(item.Path))
-            return [];
+            return folderPaths;
 
-        return Directory.EnumerateDirectories(item.Path);
+        foreach (var directory in Directory.EnumerateDirectories(item.Path))
+        {
+            folderPaths.Add(directory);
+        }
+
+        return folderPaths;
     }
 
     private MediaItem BuildFolderItem(string folderPath)
@@ -545,6 +590,16 @@ public class SeriesMerger(
         var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(filePath);
         var cleanedBaseName = Regex.Replace(fileNameWithoutExtension, @"(?:\.\d{1,3}|\s*\(\d{1,3}\))$", string.Empty);
         return cleanedBaseName + extension;
+    }
+
+    private static bool DestinationExists(string destinationPath, List<MergeOperation> operations)
+    {
+        if (!File.Exists(destinationPath))
+            return false;
+
+        return !operations.Any(op =>
+            op.Type is OperationType.DeleteDuplicate or OperationType.DeleteSample or OperationType.Delete
+            && string.Equals(op.Source, destinationPath, StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task<List<MergeOperation>> MoveMovieVideoAndMatchingSubtitlesAsync(string sourceVideoPath, string destinationVideoPath, bool dryRun)
@@ -787,6 +842,28 @@ public class SeriesMerger(
             && !Directory.EnumerateFiles(resolvedPath, "*.*", SearchOption.AllDirectories).Any();
     }
 
+    private bool CanRemoveResidualFiles(string folderPath, List<MergeOperation> mergeOps, bool dryRun)
+    {
+        var resolvedPath = ResolveAccessibleDirectoryPath(folderPath) ?? folderPath;
+        if (!Directory.Exists(resolvedPath))
+            return false;
+
+        if (!dryRun)
+            return !fileDetector.EnumerateVideoFiles(resolvedPath).Any();
+
+        var videoFiles = fileDetector.EnumerateVideoFiles(resolvedPath).ToList();
+        if (videoFiles.Count == 0)
+            return true;
+
+        var handledVideoSources = mergeOps
+            .Where(op => op.Type is OperationType.Move or OperationType.DeleteDuplicate or OperationType.DeleteSample or OperationType.Delete)
+            .Select(op => op.Source)
+            .Where(fileDetector.IsVideoFile)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return videoFiles.All(handledVideoSources.Contains);
+    }
+
     private static void DeleteDirectoryRobust(string folderPath)
     {
         var resolvedPath = ResolveAccessibleDirectoryPath(folderPath) ?? folderPath;
@@ -850,11 +927,12 @@ public class SeriesMerger(
         return true;
     }
 
-    private static EpisodeInfo? FindDuplicate(EpisodeInfo source, List<EpisodeInfo> canonicalEpisodes)
+    private static List<EpisodeInfo> FindDuplicates(EpisodeInfo source, List<EpisodeInfo> canonicalEpisodes)
     {
-        return canonicalEpisodes.FirstOrDefault(ce =>
-            ce.Season == source.Season &&
-            ce.Episodes.Any(e => source.Episodes.Contains(e)));
+        return canonicalEpisodes.Where(ce =>
+                ce.Season == source.Season &&
+                ce.Episodes.Any(e => source.Episodes.Contains(e)))
+            .ToList();
     }
 
     private static EpisodeInfo CloneForDestination(EpisodeInfo source, string destinationPath)

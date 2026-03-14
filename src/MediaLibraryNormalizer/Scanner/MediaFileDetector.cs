@@ -22,7 +22,7 @@ public class MediaFileDetector : IMediaFileDetector
 
     private static readonly HashSet<string> AssociatedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".srt", ".ssa", ".ass", ".sub", ".idx", ".nfo", ".jpg", ".jpeg", ".png"
+        ".srt", ".ssa", ".ass", ".sub", ".idx", ".nfo", ".txt", ".jpg", ".jpeg", ".png"
     };
 
     private static readonly string[] SamplePatterns = [".sample.", "-sample", "sample-"];

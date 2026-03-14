@@ -155,6 +155,156 @@ public class SeriesMergerDiscardModeTests : IDisposable
     }
 
     [Fact]
+    public async Task MergeSimilarSubfoldersAsync_RefreshesSeasonFoldersFromDisk_WhenCachedFoldersAreStale()
+    {
+        var seriesDir = CreateDirectory("ShowWithStaleSeasonFolders");
+        var season02Dir = Directory.CreateDirectory(Path.Combine(seriesDir, "Season 02")).FullName;
+        var season2Dir = Directory.CreateDirectory(Path.Combine(seriesDir, "Season 2")).FullName;
+
+        var existingVideo = CreateFile(season02Dir, "Show.S02E01.1080p.x265.mkv");
+        var duplicateVideo = CreateFile(season2Dir, "Show.S02E02.1080p.x265.mkv");
+
+        var sut = CreateSut(new NormalizerConfig());
+        var item = new MediaItem
+        {
+            Path = seriesDir,
+            OriginalName = "Show",
+            NormalizedName = "Show",
+            FileCount = 2,
+            VideoFiles = [existingVideo, duplicateVideo],
+            SeasonFolders = [season02Dir]
+        };
+
+        var ops = await sut.MergeSimilarSubfoldersAsync([item], dryRun: true);
+
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Move
+            && op.Source == duplicateVideo
+            && op.Destination == Path.Combine(season02Dir, Path.GetFileName(duplicateVideo)));
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Delete
+            && op.Source == season2Dir);
+    }
+
+    [Fact]
+    public async Task MergeSimilarSubfoldersAsync_AhsokaStyleVariants_DeleteAllInferiorCanonicalDuplicates_AndMoveWinningSource()
+    {
+        var seriesDir = CreateDirectory("Ahsoka");
+        var season01Dir = Directory.CreateDirectory(Path.Combine(seriesDir, "Season 01")).FullName;
+        var season1Dir = Directory.CreateDirectory(Path.Combine(seriesDir, "Season 1")).FullName;
+
+        var canonicalSameName = CreateFile(season01Dir, "Ahsoka - S01E01 - TBA.mkv", 100);
+        var canonicalVariant = CreateFile(season01Dir, "Ahsoka - S01E01 - TBA.2.mkv", 90);
+        var sourceWinner = CreateFile(season1Dir, "Ahsoka - S01E01 - TBA.mkv", 200);
+
+        var sut = CreateSut(new NormalizerConfig { DiscardInferiorDuplicates = true });
+        var item = new MediaItem
+        {
+            Path = seriesDir,
+            OriginalName = "Ahsoka",
+            NormalizedName = "Ahsoka",
+            FileCount = 3,
+            VideoFiles = [canonicalSameName, canonicalVariant, sourceWinner],
+            SeasonFolders = [season01Dir, season1Dir]
+        };
+
+        var ops = await sut.MergeSimilarSubfoldersAsync([item], dryRun: true);
+
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.DeleteDuplicate
+            && op.Source == canonicalSameName);
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.DeleteDuplicate
+            && op.Source == canonicalVariant);
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Move
+            && op.Source == sourceWinner
+            && op.Destination == Path.Combine(season01Dir, Path.GetFileName(sourceWinner)));
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Delete
+            && op.Source == season1Dir);
+    }
+
+    [Fact]
+    public async Task MergeSimilarSubfoldersAsync_AhsokaStyleTxtSidecars_AreMovedWithEpisodeFiles()
+    {
+        var seriesDir = CreateDirectory("AhsokaSidecars");
+        var season01Dir = Directory.CreateDirectory(Path.Combine(seriesDir, "Season 01")).FullName;
+        var season1Dir = Directory.CreateDirectory(Path.Combine(seriesDir, "Season 1")).FullName;
+
+        var sourceVideo = CreateFile(season1Dir, "Ahsoka - S01E02 - TBA.mkv", 120);
+        var sourceTxt = CreateFile(season1Dir, "Ahsoka - S01E02 - TBA.txt", 20);
+
+        var sut = CreateSut(new NormalizerConfig { DiscardInferiorDuplicates = true });
+        var item = new MediaItem
+        {
+            Path = seriesDir,
+            OriginalName = "Ahsoka",
+            NormalizedName = "Ahsoka",
+            FileCount = 1,
+            VideoFiles = [sourceVideo],
+            SeasonFolders = [season01Dir, season1Dir]
+        };
+
+        var ops = await sut.MergeSimilarSubfoldersAsync([item], dryRun: true);
+
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Move
+            && op.Source == sourceVideo
+            && op.Destination == Path.Combine(season01Dir, Path.GetFileName(sourceVideo)));
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Move
+            && op.Source == sourceTxt
+            && op.Destination == Path.Combine(season01Dir, Path.GetFileName(sourceTxt)));
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Delete
+            && op.Source == season1Dir);
+    }
+
+    [Fact]
+    public async Task MergeSimilarSubfoldersAsync_AhsokaStyleResidualTxtFiles_AreDeletedAfterDuplicateVideoRemoval()
+    {
+        var seriesDir = CreateDirectory("AhsokaResidualTxt");
+        var season01Dir = Directory.CreateDirectory(Path.Combine(seriesDir, "Season 01")).FullName;
+        var season1Dir = Directory.CreateDirectory(Path.Combine(seriesDir, "Season 1")).FullName;
+
+        var canonicalVideo = CreateFile(season01Dir, "Ahsoka - S01E05 - TBA.mkv", 200);
+        var duplicateVideo = CreateFile(season1Dir, "Ahsoka - S01E05 - TBA.10.mkv", 100);
+        var residualTxt1 = CreateFile(season1Dir, "Ahsoka - S01E05 - TBA.1.txt", 10);
+        var residualTxt2 = CreateFile(season1Dir, "Ahsoka - S01E05 - TBA.2.txt", 10);
+        var residualTxt3 = CreateFile(season1Dir, "Ahsoka - S01E05 - TBA.3.txt", 10);
+
+        var sut = CreateSut(new NormalizerConfig { DiscardInferiorDuplicates = true });
+        var item = new MediaItem
+        {
+            Path = seriesDir,
+            OriginalName = "Ahsoka",
+            NormalizedName = "Ahsoka",
+            FileCount = 2,
+            VideoFiles = [canonicalVideo, duplicateVideo],
+            SeasonFolders = [season01Dir, season1Dir]
+        };
+
+        var ops = await sut.MergeSimilarSubfoldersAsync([item], dryRun: true);
+
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.DeleteDuplicate
+            && op.Source == duplicateVideo);
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.DeleteDuplicate
+            && op.Source == residualTxt1);
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.DeleteDuplicate
+            && op.Source == residualTxt2);
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.DeleteDuplicate
+            && op.Source == residualTxt3);
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Delete
+            && op.Source == season1Dir);
+    }
+
+    [Fact]
     public async Task MergeAsync_MovieDuplicateGroup_KeepsBestMovieMovesItToRootAndDeletesFolders()
     {
         var movieRoot = CreateDirectory("MoviesRoot");
@@ -292,8 +442,8 @@ public class SeriesMergerDiscardModeTests : IDisposable
     public async Task DeduplicateTopLevelMovieFilesAsync_PreservesYearInWinnerFileName()
     {
         var movieRoot = CreateDirectory("TopLevelYearRename");
-        var winningVideo = CreateFile(movieRoot, "Gladiator II (2024).1.mkv");
-        var losingVideo = CreateFile(movieRoot, "Gladiator II (2024).mp4");
+        var winningVideo = CreateFile(movieRoot, "Gladiator II (2024).1.mkv", 200);
+        var losingVideo = CreateFile(movieRoot, "Gladiator II (2024).mp4", 100);
 
         var sut = CreateSut(new NormalizerConfig());
 
@@ -368,10 +518,10 @@ public class SeriesMergerDiscardModeTests : IDisposable
         return path;
     }
 
-    private static string CreateFile(string directory, string fileName)
+    private static string CreateFile(string directory, string fileName, int sizeBytes = 4)
     {
         var path = Path.Combine(directory, fileName);
-        File.WriteAllBytes(path, [1, 2, 3, 4]);
+        File.WriteAllBytes(path, Enumerable.Repeat((byte)1, sizeBytes).ToArray());
         return path;
     }
 
