@@ -528,10 +528,36 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
         try
         {
-            if (!string.IsNullOrWhiteSpace(series.FolderPath) && Directory.Exists(series.FolderPath))
+            if (string.IsNullOrWhiteSpace(series.FolderPath))
             {
-                await Task.Run(() => Directory.Delete(series.FolderPath, recursive: true));
-                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Deleted folder: {series.FolderPath}");
+                const string msg = "Folder path is not recorded for this series — cannot delete files.";
+                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  ERROR: {msg}");
+                Errors.Add(msg);
+                ErrorCount = Errors.Count;
+                StatusMessage = "Deletion failed.";
+                return;
+            }
+
+            if (!Directory.Exists(series.FolderPath))
+            {
+                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  WARNING: Folder not found on disk (already removed?): {series.FolderPath}");
+            }
+            else
+            {
+                await Task.Run(() =>
+                {
+                    // Clear read-only attribute on all contained files before deletion;
+                    // on Windows these cause Directory.Delete to throw UnauthorizedAccessException.
+                    foreach (var file in Directory.EnumerateFiles(series.FolderPath, "*", SearchOption.AllDirectories))
+                    {
+                        var attrs = File.GetAttributes(file);
+                        if ((attrs & FileAttributes.ReadOnly) != 0)
+                            File.SetAttributes(file, attrs & ~FileAttributes.ReadOnly);
+                    }
+
+                    Directory.Delete(series.FolderPath, recursive: true);
+                });
+                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Deleted: {series.FolderPath}");
             }
 
             Series.Remove(series);
@@ -561,8 +587,11 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            var msg = $"Failed to delete '{series.DisplayTitle}': {ex.Message}";
             StatusMessage = "Deletion failed.";
-            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  ERROR: {ex.Message}");
+            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  ERROR: {msg}");
+            Errors.Add(msg);
+            ErrorCount = Errors.Count;
         }
         finally
         {
