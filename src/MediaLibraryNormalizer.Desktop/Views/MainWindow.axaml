@@ -352,7 +352,7 @@
                     </Grid>
 
                     <Border Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
                             <StackPanel Grid.Row="0" Grid.Column="0" Spacing="8">
                                 <TextBlock Text="Audit Controls" FontWeight="SemiBold" FontSize="18"/>
                                 <TextBlock Text="Build a local inventory and optionally reconcile it against an online catalog provider." Opacity="0.75" TextWrapping="Wrap"/>
@@ -360,6 +360,9 @@
 
                             <StackPanel Grid.Row="0" Grid.Column="1" Margin="16,0,0,0" Spacing="8" VerticalAlignment="Bottom">
                                 <Button Command="{Binding MissingEpisodeFinder.RunInventoryCommand}" Content="Run Inventory Audit" MinWidth="180"/>
+                                <Button Command="{Binding MissingEpisodeFinder.LoadLastRunCommand}" Content="Load Last Run" MinWidth="140"
+                                        IsVisible="{Binding MissingEpisodeFinder.HasLastSavedRun}"
+                                        ToolTip.Tip="{Binding MissingEpisodeFinder.LastSavedRunDate, StringFormat='Saved: {0}'}"/>
                                 <Button Command="{Binding MissingEpisodeFinder.ClearInventoryCommand}" Content="Clear Results" MinWidth="140"/>
                             </StackPanel>
 
@@ -368,40 +371,37 @@
                                     <TextBlock Text="Catalog Provider" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                     <ComboBox MinWidth="180" ItemsSource="{Binding MissingEpisodeFinder.CatalogProviders}" SelectedItem="{Binding MissingEpisodeFinder.SelectedCatalogProvider}"/>
                                 </StackPanel>
-                                <CheckBox Content="Verbose logging" IsChecked="{Binding MissingEpisodeFinder.Verbose}" Margin="0,0,16,8"/>
+                                <StackPanel Margin="0,0,16,8" IsVisible="{Binding MissingEpisodeFinder.IsTheTvdbSelected}">
+                                    <TextBlock Text="TheTVDB API Key" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                    <TextBox MinWidth="180" Text="{Binding MissingEpisodeFinder.TheTvdbApiKey}" PasswordChar="•" Watermark="thetvdb.com → Account → API Keys"/>
+                                </StackPanel>                                <StackPanel Margin="0,0,16,8">
+                                    <TextBlock Text="NZBPlanet API Key" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                    <DockPanel LastChildFill="True">
+                                        <Button DockPanel.Dock="Right" Margin="6,0,0,0"
+                                                Command="{Binding MissingEpisodeFinder.CheckUsenetCommand}"
+                                                Content="Check Usenet"
+                                                IsVisible="{Binding MissingEpisodeFinder.IsNzbConfigured}"/>
+                                        <TextBox Text="{Binding MissingEpisodeFinder.NzbApiKey}" PasswordChar="&#x2022;" Watermark="nzbplanet.net API key (optional)"/>
+                                    </DockPanel>
+                                </StackPanel>                                <CheckBox Content="Verbose logging" IsChecked="{Binding MissingEpisodeFinder.Verbose}" Margin="0,0,16,8"/>
                                 <CheckBox Content="Include specials" IsChecked="{Binding MissingEpisodeFinder.IncludeSpecials}" Margin="0,0,16,8"/>
                             </WrapPanel>
 
                             <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Margin="0,12,0,0" Text="{Binding MissingEpisodeFinder.LastRunSummary}" Opacity="0.75" TextWrapping="Wrap"/>
-                            <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Margin="0,6,0,0" Text="Selecting 'None' runs local inventory only. Selecting TVMaze also checks for missing aired episodes." Opacity="0.65" TextWrapping="Wrap"/>
+                            <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Margin="0,4,0,0"
+                                       Opacity="0.65" FontSize="11"
+                                       IsVisible="{Binding MissingEpisodeFinder.HasLastSavedRun}"
+                                       Text="{Binding MissingEpisodeFinder.LastSavedRunDate, StringFormat='Last saved: {0}'}"/>
+                            <TextBlock Grid.Row="4" Grid.ColumnSpan="2" Margin="0,6,0,0" Text="Selecting 'None' runs local inventory only. TVMaze or TheTVDB also check for missing aired episodes." Opacity="0.65" TextWrapping="Wrap"/>
                         </Grid>
                     </Border>
 
-                    <Grid ColumnDefinitions="2*,3*" ColumnSpacing="16">
-                        <Border Grid.Column="0" Padding="20" CornerRadius="16" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                            <StackPanel Spacing="10">
-                                <TextBlock Text="Missing Episode Finder" FontSize="24" FontWeight="Bold"/>
-                                <TextBlock Text="{Binding MissingEpisodeFinderStatus}" TextWrapping="Wrap" Opacity="0.8"/>
-                                <TextBlock Text="{Binding MissingEpisodeFinderReadiness}" TextWrapping="Wrap" Opacity="0.72"/>
-                                <TextBlock Text="{Binding MissingEpisodeFinder.StatusMessage}" TextWrapping="Wrap" Opacity="0.72"/>
-                                <Button Command="{Binding NavigateHomeCommand}" Content="Back to Home" HorizontalAlignment="Left" Margin="0,8,0,0"/>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Grid.Column="1" Padding="20" CornerRadius="16" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                            <StackPanel Spacing="10">
-                                <TextBlock Text="Current Audit Capabilities" FontSize="20" FontWeight="Bold"/>
-                                <TextBlock Text="This page now scans the library, builds a real per-series inventory, and can reconcile exact normalized matches against TVMaze when enabled." TextWrapping="Wrap" Opacity="0.8"/>
-                                <TextBlock Text="The next slice should improve matching depth, provider resiliency, and richer missing-episode reporting." TextWrapping="Wrap" Opacity="0.72"/>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-
                     <Grid ColumnDefinitions="2*,3*" ColumnSpacing="16" MinHeight="0">
                         <Border Grid.Column="0" Padding="8" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1" MinHeight="0">
-                            <Grid RowDefinitions="Auto,*">
+                            <Grid RowDefinitions="Auto,Auto,*">
                                 <TextBlock Grid.Row="0" Text="Series Inventory" Margin="8" FontSize="18" FontWeight="Bold"/>
-                                <ListBox Grid.Row="1" MinHeight="0" ScrollViewer.VerticalScrollBarVisibility="Auto" ItemsSource="{Binding MissingEpisodeFinder.Series}" SelectedItem="{Binding MissingEpisodeFinder.SelectedSeries}">
+                                <CheckBox Grid.Row="1" Margin="8,0,8,8" Content="Show only series with missing episodes" IsChecked="{Binding MissingEpisodeFinder.ShowOnlyMissingEpisodes}"/>
+                                <ListBox Grid.Row="2" MinHeight="0" ScrollViewer.VerticalScrollBarVisibility="Auto" ItemsSource="{Binding MissingEpisodeFinder.FilteredSeries}" SelectedItem="{Binding MissingEpisodeFinder.SelectedSeries}">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate x:DataType="vm:SeriesAuditItemViewModel">
                                             <Border Margin="4" Padding="8" CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
@@ -424,19 +424,47 @@
                         </Border>
 
                         <Border Grid.Column="1" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1" MinHeight="0">
-                            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*" MinHeight="0">
+                            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*" MinHeight="0">
                                 <TextBlock Grid.Row="0" Text="{Binding MissingEpisodeFinder.SelectedSeriesTitle}" FontSize="22" FontWeight="Bold" TextWrapping="Wrap"/>
                                 <TextBlock Grid.Row="1" Margin="0,8,0,0" Text="{Binding MissingEpisodeFinder.SelectedSeriesSummary}" Opacity="0.78" TextWrapping="Wrap"/>
                                 <TextBlock Grid.Row="2" Margin="0,8,0,0" Text="{Binding MissingEpisodeFinder.SelectedSeriesCatalogSummary}" Opacity="0.78" TextWrapping="Wrap"/>
                                 <TextBlock Grid.Row="3" Margin="0,8,0,0" Text="{Binding MissingEpisodeFinder.SelectedSeriesMissingSummary}" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                                <TextBlock Grid.Row="4" Margin="0,16,0,0" Text="Episode Preview" FontSize="18" FontWeight="Bold"/>
-                                <TextBlock Grid.Row="5" Margin="0,8,0,0" Text="{Binding MissingEpisodeFinder.SelectedSeriesEpisodePreview}" TextWrapping="Wrap"/>
-                                <ScrollViewer Grid.Row="6" Margin="0,16,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                <Border Grid.Row="4" Margin="0,12,0,0" Padding="12" CornerRadius="10" Background="{DynamicResource ThemeControlLowBrush}" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.HasMetadata, FallbackValue=False}">
+                                    <StackPanel Spacing="6">
+                                        <WrapPanel>
+                                            <TextBlock Margin="0,0,8,0" Text="{Binding MissingEpisodeFinder.SelectedSeries.RatingText}" FontWeight="SemiBold" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.RatingText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                            <TextBlock Margin="0,0,8,0" Text="{Binding MissingEpisodeFinder.SelectedSeries.Network}" Opacity="0.8" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.Network, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                            <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeries.SeriesStatus}" Opacity="0.8" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.SeriesStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        </WrapPanel>
+                                        <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeries.GenreText}" FontSize="12" Opacity="0.72" TextWrapping="Wrap" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.GenreText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeries.CatalogSummaryText}" FontSize="12" Opacity="0.75" TextWrapping="Wrap" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.CatalogSummaryText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Grid.Row="5" Margin="0,16,0,0" Text="Episode Preview" FontSize="18" FontWeight="Bold"/>
+                                <TextBlock Grid.Row="6" Margin="0,8,0,0" Text="{Binding MissingEpisodeFinder.SelectedSeriesEpisodePreview}" TextWrapping="Wrap"/>
+                                <ScrollViewer Grid.Row="7" Margin="0,16,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                                     <StackPanel Spacing="12">
                                         <Border Padding="12" CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
                                             <StackPanel Spacing="4">
                                                 <TextBlock Text="Missing Episode Preview" FontWeight="Bold"/>
                                                 <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesMissingEpisodePreview}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Padding="12" CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1"
+                                                IsVisible="{Binding MissingEpisodeFinder.HasNzbResults}">
+                                            <StackPanel Spacing="6">
+                                                <TextBlock Text="Usenet Availability" FontWeight="Bold"/>
+                                                <ItemsControl ItemsSource="{Binding MissingEpisodeFinder.NzbResults}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:NzbEpisodeResultViewModel">
+                                                            <DockPanel Margin="0,2">
+                                                                <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}" FontWeight="SemiBold" HorizontalAlignment="Right"/>
+                                                                <TextBlock Text="{Binding DisplayLabel}" TextWrapping="Wrap"/>
+                                                            </DockPanel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
                                             </StackPanel>
                                         </Border>
 

@@ -12,17 +12,25 @@ namespace MediaLibraryNormalizer.Desktop.ViewModels;
 public partial class MissingEpisodeFinderViewModel : ViewModelBase
 {
     private readonly ISeriesAuditRunner _auditRunner;
+    private readonly IAuditRepository? _repository;
+    private readonly ICatalogCache? _catalogCache;
 
     public MissingEpisodeFinderViewModel()
         : this(new SeriesAuditRunner())
     {
     }
 
-    public MissingEpisodeFinderViewModel(ISeriesAuditRunner auditRunner)
+    public MissingEpisodeFinderViewModel(
+        ISeriesAuditRunner auditRunner,
+        IAuditRepository? repository = null)
     {
         _auditRunner = auditRunner;
+        _repository = repository;
+        _catalogCache = repository as ICatalogCache;
         RunInventoryCommand = new AsyncRelayCommand(RunInventoryAsync, CanRunInventory);
         ClearInventoryCommand = new RelayCommand(ClearInventory, CanClearInventory);
+        LoadLastRunCommand = new AsyncRelayCommand(LoadLastRunAsync, CanLoadLastRun);
+        CheckUsenetCommand = new AsyncRelayCommand(CheckUsenetAsync, CanCheckUsenet);
     }
 
     public ObservableCollection<SeriesAuditItemViewModel> Series { get; } = [];
@@ -31,11 +39,17 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
     public ObservableCollection<string> Errors { get; } = [];
 
+    public ObservableCollection<NzbEpisodeResultViewModel> NzbResults { get; } = [];
+
     public IReadOnlyList<CatalogProviderKind> CatalogProviders { get; } = Enum.GetValues<CatalogProviderKind>();
 
     public IAsyncRelayCommand RunInventoryCommand { get; }
 
     public IRelayCommand ClearInventoryCommand { get; }
+
+    public IAsyncRelayCommand LoadLastRunCommand { get; }
+
+    public IAsyncRelayCommand CheckUsenetCommand { get; }
 
     [ObservableProperty]
     private string libraryPath = string.Empty;
@@ -50,13 +64,33 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     private CatalogProviderKind selectedCatalogProvider = CatalogProviderKind.None;
 
     [ObservableProperty]
+    private string theTvdbApiKey = string.Empty;
+
+    [ObservableProperty]
+    private string nzbApiKey = string.Empty;
+
+    public bool IsTheTvdbSelected => SelectedCatalogProvider == CatalogProviderKind.TheTvdb;
+
+    public bool IsNzbConfigured => !string.IsNullOrWhiteSpace(NzbApiKey);
+
+    public bool HasNzbResults => NzbResults.Count > 0;
+
+    [ObservableProperty]
     private bool isBusy;
+
+    [ObservableProperty]
+    private bool isCheckingUsenet;
 
     [ObservableProperty]
     private string statusMessage = "Ready to scan local inventory.";
 
     [ObservableProperty]
     private string lastRunSummary = "No inventory runs yet.";
+
+    [ObservableProperty]
+    private string lastSavedRunDate = string.Empty;
+
+    public bool HasLastSavedRun => !string.IsNullOrEmpty(LastSavedRunDate);
 
     [ObservableProperty]
     private int seriesCount;
@@ -113,10 +147,37 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
     public string SelectedSeriesUnparseableSummary => SelectedSeries?.UnparseableSummary ?? "No unparseable files to display.";
 
+    [ObservableProperty]
+    private bool showOnlyMissingEpisodes;
+
+    public IEnumerable<SeriesAuditItemViewModel> FilteredSeries =>
+        ShowOnlyMissingEpisodes
+            ? Series.Where(static s => s.HasMissingEpisodes)
+            : Series;
+
+    partial void OnShowOnlyMissingEpisodesChanged(bool value)
+    {
+        OnPropertyChanged(nameof(FilteredSeries));
+        SelectedSeries = FilteredSeries.FirstOrDefault();
+    }
+
     partial void OnIsBusyChanged(bool value)
     {
         RunInventoryCommand.NotifyCanExecuteChanged();
         ClearInventoryCommand.NotifyCanExecuteChanged();
+        LoadLastRunCommand.NotifyCanExecuteChanged();
+        CheckUsenetCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnSelectedCatalogProviderChanged(CatalogProviderKind value)
+    {
+        OnPropertyChanged(nameof(IsTheTvdbSelected));
+    }
+
+    partial void OnNzbApiKeyChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsNzbConfigured));
+        CheckUsenetCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnLibraryPathChanged(string value)
@@ -134,11 +195,19 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         OnPropertyChanged(nameof(SelectedSeriesIssueSummary));
         OnPropertyChanged(nameof(SelectedSeriesEpisodePreview));
         OnPropertyChanged(nameof(SelectedSeriesUnparseableSummary));
+        NzbResults.Clear();
+        OnPropertyChanged(nameof(HasNzbResults));
+        CheckUsenetCommand.NotifyCanExecuteChanged();
     }
 
     private bool CanRunInventory() => !IsBusy && !string.IsNullOrWhiteSpace(LibraryPath);
 
     private bool CanClearInventory() => !IsBusy && Series.Count > 0;
+
+    private bool CanLoadLastRun() => !IsBusy && _repository is not null && !string.IsNullOrWhiteSpace(LibraryPath);
+
+    private bool CanCheckUsenet() => !IsBusy && !IsCheckingUsenet && IsNzbConfigured
+        && SelectedSeries is { HasMissingEpisodes: true };
 
     private async Task RunInventoryAsync()
     {
@@ -160,10 +229,21 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                 LibraryPath = LibraryPath.Trim(),
                 Verbose = Verbose,
                 IncludeSpecials = IncludeSpecials,
-                CatalogProvider = SelectedCatalogProvider
-            }, progress);
+                CatalogProvider = SelectedCatalogProvider,
+                TheTvdbApiKey = TheTvdbApiKey.Trim(),
+                NzbApiKey = NzbApiKey.Trim().Length > 0 ? NzbApiKey.Trim() : null
+            }, progress, _catalogCache);
 
             ApplyResult(result);
+
+            if (_repository is not null)
+            {
+                await _repository.SaveRunAsync(result);
+                LastSavedRunDate = $"{DateTime.Now:yyyy-MM-dd HH:mm}";
+                OnPropertyChanged(nameof(HasLastSavedRun));
+                LoadLastRunCommand.NotifyCanExecuteChanged();
+            }
+
             StatusMessage = SelectedCatalogProvider == CatalogProviderKind.None
                 ? "Local inventory scan completed. Enable a catalog provider to check for missing episodes."
                 : "Inventory and catalog lookup completed.";
@@ -213,6 +293,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                 : $"Series {SeriesCount} • Catalog matched {CatalogMatchedSeriesCount} • Missing episodes {MissingEpisodeCount} • Ambiguous {CatalogAmbiguousSeriesCount}";
         SelectedSeries = Series.FirstOrDefault();
         ClearInventoryCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(FilteredSeries));
     }
 
     private void ClearInventory()
@@ -220,6 +301,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         Series.Clear();
         ActivityLog.Clear();
         Errors.Clear();
+        NzbResults.Clear();
         SelectedSeries = null;
         SeriesCount = 0;
         ReadySeriesCount = 0;
@@ -236,5 +318,96 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         LastRunSummary = "No inventory runs yet.";
         StatusMessage = "Inventory results cleared.";
         ClearInventoryCommand.NotifyCanExecuteChanged();
+    }
+
+    private async Task LoadLastRunAsync()
+    {
+        if (_repository is null) return;
+
+        IsBusy = true;
+        StatusMessage = "Loading last saved run...";
+        ActivityLog.Clear();
+
+        try
+        {
+            var stored = await _repository.LoadLatestRunAsync(LibraryPath.Trim());
+            if (stored is null)
+            {
+                StatusMessage = "No saved run found for this library path.";
+                return;
+            }
+
+            ApplyResult(stored.Value.Result);
+            LastSavedRunDate = stored.Value.RunDate.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+            OnPropertyChanged(nameof(HasLastSavedRun));
+            StatusMessage = $"Loaded run from {LastSavedRunDate}.";
+            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Loaded {SeriesCount} series from saved run ({LastSavedRunDate}).");
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = "Failed to load last run.";
+            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  ERROR: {ex.Message}");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task CheckUsenetAsync()
+    {
+        if (SelectedSeries is null || string.IsNullOrWhiteSpace(NzbApiKey)) return;
+
+        IsCheckingUsenet = true;
+        NzbResults.Clear();
+        OnPropertyChanged(nameof(HasNzbResults));
+        StatusMessage = $"Checking Usenet availability for {SelectedSeries.DisplayTitle}...";
+        ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Checking NZBPlanet for {SelectedSeries.DisplayTitle}...");
+
+        try
+        {
+            using var checker = new NzbPlanetAvailabilityChecker(NzbApiKey.Trim());
+            foreach (var ep in SelectedSeries.Item.MissingEpisodes)
+            {
+                var results = await checker.SearchAsync(
+                    SelectedSeries.Item.OriginalTitle,
+                    ParseSeason(ep.Key),
+                    ParseEpisode(ep.Key));
+
+                NzbResults.Add(new NzbEpisodeResultViewModel(ep.Key, ep.Title, results.Count));
+                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → {results.Count} NZB(s) found.");
+            }
+
+            OnPropertyChanged(nameof(HasNzbResults));
+            StatusMessage = $"Usenet check complete: {NzbResults.Count(static r => r.NzbCount > 0)}/{NzbResults.Count} episodes available.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = "Usenet check failed.";
+            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  ERROR: {ex.Message}");
+        }
+        finally
+        {
+            IsCheckingUsenet = false;
+            CheckUsenetCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private static int ParseSeason(string episodeKey)
+    {
+        // Key format: S01E02
+        if (episodeKey.Length >= 3 && episodeKey[0] == 'S'
+            && int.TryParse(episodeKey.AsSpan(1, 2), out var s))
+            return s;
+        return 1;
+    }
+
+    private static int ParseEpisode(string episodeKey)
+    {
+        // Key format: S01E02
+        if (episodeKey.Length >= 6 && episodeKey[3] == 'E'
+            && int.TryParse(episodeKey.AsSpan(4, 2), out var e))
+            return e;
+        return 1;
     }
 }

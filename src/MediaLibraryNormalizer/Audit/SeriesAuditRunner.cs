@@ -1,3 +1,4 @@
+using FuzzySharp;
 using MediaLibraryNormalizer.Config;
 using MediaLibraryNormalizer.Normalization;
 using MediaLibraryNormalizer.Parser;
@@ -13,6 +14,7 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
     public async Task<SeriesAuditRunResult> RunAsync(
         SeriesAuditOptions options,
         IProgress<string>? progress = null,
+        ICatalogCache? catalogCache = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -30,7 +32,7 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
         var scanner = serviceProvider.GetRequiredService<ILibraryScanner>();
         var normalizer = serviceProvider.GetRequiredService<INameNormalizer>();
         var episodeParser = serviceProvider.GetRequiredService<IEpisodeParser>();
-        var provider = CreateProvider(options);
+        var provider = CreateProvider(options, progress);
 
         progress?.Report("Scanning local library inventory...");
 
@@ -78,7 +80,14 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
                     int? catalogMatchedYear = null;
                     var catalogEpisodeCount = 0;
                     var missingEpisodeKeys = new List<string>();
+                    var missingEpisodes = new List<MissingEpisodeInfo>();
                     var extraEpisodeKeys = new List<string>();
+                    string? catalogSummary = null;
+                    var catalogGenres = new List<string>();
+                    string? catalogNetwork = null;
+                    string? catalogSeriesStatus = null;
+                    double? catalogRating = null;
+                    string? catalogImageUrl = null;
 
                     if (provider is not null && parsedEpisodeKeys.Count > 0)
                     {
@@ -93,6 +102,7 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
                                 normalized.Year,
                                 parsedEpisodeKeys,
                                 options,
+                                catalogCache,
                                 cancellationToken);
 
                             catalogStatus = catalogResult.Status;
@@ -101,7 +111,14 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
                             catalogMatchedYear = catalogResult.MatchedYear;
                             catalogEpisodeCount = catalogResult.CatalogEpisodeCount;
                             missingEpisodeKeys = catalogResult.MissingEpisodeKeys;
+                            missingEpisodes = catalogResult.MissingEpisodes;
                             extraEpisodeKeys = catalogResult.ExtraEpisodeKeys;
+                            catalogSummary = catalogResult.Summary;
+                            catalogGenres = catalogResult.Genres;
+                            catalogNetwork = catalogResult.Network;
+                            catalogSeriesStatus = catalogResult.SeriesStatus;
+                            catalogRating = catalogResult.Rating;
+                            catalogImageUrl = catalogResult.ImageUrl;
                         }
                         catch (Exception ex)
                         {
@@ -126,10 +143,17 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
                         CatalogMatchedTitle = catalogMatchedTitle,
                         CatalogMatchedYear = catalogMatchedYear,
                         CatalogEpisodeCount = catalogEpisodeCount,
+                        CatalogSummary = catalogSummary,
+                        CatalogGenres = catalogGenres,
+                        CatalogNetwork = catalogNetwork,
+                        CatalogSeriesStatus = catalogSeriesStatus,
+                        CatalogRating = catalogRating,
+                        CatalogImageUrl = catalogImageUrl,
                         MissingEpisodeCount = missingEpisodeKeys.Count,
                         ExtraEpisodeCount = extraEpisodeKeys.Count,
                         EpisodeKeys = parsedEpisodeKeys.OrderBy(static key => key, StringComparer.OrdinalIgnoreCase).ToList(),
                         MissingEpisodeKeys = missingEpisodeKeys,
+                        MissingEpisodes = missingEpisodes,
                         ExtraEpisodeKeys = extraEpisodeKeys,
                         UnparseableFiles = unparseableFiles.OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).ToList()
                     });
@@ -177,15 +201,21 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
         }
     }
 
-    private ISeriesCatalogProvider? CreateProvider(SeriesAuditOptions options)
+    private ISeriesCatalogProvider? CreateProvider(SeriesAuditOptions options, IProgress<string>? progress)
     {
         if (_catalogProvider is not null)
             return _catalogProvider;
 
+        Action<string>? log = progress is not null ? message => progress.Report(message) : null;
+
         return options.CatalogProvider switch
         {
             CatalogProviderKind.None => null,
-            CatalogProviderKind.TvMaze => new TvMazeSeriesCatalogProvider(new HttpClient()),
+            CatalogProviderKind.TvMaze => new TvMazeSeriesCatalogProvider(new HttpClient(), log),
+            CatalogProviderKind.TheTvdb when !string.IsNullOrWhiteSpace(options.TheTvdbApiKey)
+                => new TheTvdbSeriesCatalogProvider(options.TheTvdbApiKey, log),
+            CatalogProviderKind.TheTvdb => throw new InvalidOperationException(
+                "TheTVDB catalog provider requires an API key. Get one at thetvdb.com → Account → API Keys."),
             _ => null
         };
     }
@@ -197,41 +227,80 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
         int? year,
         HashSet<string> localEpisodeKeys,
         SeriesAuditOptions options,
+        ICatalogCache? catalogCache,
         CancellationToken cancellationToken)
     {
-        var candidates = await provider.SearchSeriesAsync(normalizedTitle, cancellationToken);
-        if (candidates.Count == 0)
+        // 1. Check catalog cache before hitting the API
+        CatalogSeries? catalogSeries = null;
+        if (catalogCache is not null)
+            catalogSeries = await catalogCache.GetAsync(
+                provider.Kind, normalizedTitle, options.CacheExpiryHours, cancellationToken);
+
+        if (catalogSeries is null)
         {
-            return CatalogEvaluationResult.NoMatch($"No {provider.DisplayName} match found.");
+            // 2. Search the provider
+            var candidates = await provider.SearchSeriesAsync(normalizedTitle, cancellationToken);
+            if (candidates.Count == 0)
+                return CatalogEvaluationResult.NoMatch($"No {provider.DisplayName} match found.");
+
+            var exactMatches = candidates
+                .Select(candidate => new
+                {
+                    Candidate = candidate,
+                    CandidateTitle = normalizer.Normalize(candidate.Title).Title
+                })
+                .Where(result => string.Equals(result.CandidateTitle, normalizedTitle, StringComparison.OrdinalIgnoreCase))
+                .Select(result => result.Candidate)
+                .ToList();
+
+            if (exactMatches.Count == 0)
+            {
+                // 3. Fuzzy-match fallback
+                if (options.FuzzyMatchThreshold > 0)
+                {
+                    var fuzzyMatches = candidates
+                        .Select(c => new
+                        {
+                            Candidate = c,
+                            Score = Fuzz.Ratio(normalizer.Normalize(c.Title).Title, normalizedTitle)
+                        })
+                        .Where(x => x.Score >= options.FuzzyMatchThreshold)
+                        .OrderByDescending(x => x.Score)
+                        .ToList();
+
+                    if (fuzzyMatches.Count == 0)
+                        return CatalogEvaluationResult.NoMatch(
+                            $"No {provider.DisplayName} match found (best fuzzy score below {options.FuzzyMatchThreshold}%).");
+
+                    exactMatches = fuzzyMatches.Select(static x => x.Candidate).ToList();
+                }
+                else
+                {
+                    return CatalogEvaluationResult.NoMatch(
+                        $"No exact normalized {provider.DisplayName} title match found.");
+                }
+            }
+
+            var selectedCandidate = SelectCandidate(exactMatches, year);
+            if (selectedCandidate is null)
+                return CatalogEvaluationResult.Ambiguous($"Multiple plausible {provider.DisplayName} matches were found.");
+
+            catalogSeries = await provider.GetSeriesAsync(selectedCandidate.SourceId, cancellationToken);
+
+            // 4. Cache the fetched series
+            if (catalogCache is not null)
+                await catalogCache.SetAsync(provider.Kind, normalizedTitle, catalogSeries, cancellationToken);
         }
 
-        var exactMatches = candidates
-            .Select(candidate => new
-            {
-                Candidate = candidate,
-                CandidateTitle = normalizer.Normalize(candidate.Title).Title
-            })
-            .Where(result => string.Equals(result.CandidateTitle, normalizedTitle, StringComparison.OrdinalIgnoreCase))
-            .Select(result => result.Candidate)
+        // 5. Compute missing/extra episodes from (possibly cached) catalog data
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var filteredEpisodes = catalogSeries.Episodes
+            .Where(e => options.IncludeSpecials || !e.IsSpecial)
+            .Where(e => !e.AirDate.HasValue || e.AirDate.Value <= today)
             .ToList();
 
-        if (exactMatches.Count == 0)
-        {
-            return CatalogEvaluationResult.NoMatch($"No exact normalized {provider.DisplayName} title match found.");
-        }
-
-        var selectedCandidate = SelectCandidate(exactMatches, year);
-        if (selectedCandidate is null)
-        {
-            return CatalogEvaluationResult.Ambiguous($"Multiple plausible {provider.DisplayName} matches were found.");
-        }
-
-        var catalogSeries = await provider.GetSeriesAsync(selectedCandidate.SourceId, cancellationToken);
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var catalogEpisodeKeys = catalogSeries.Episodes
-            .Where(episode => options.IncludeSpecials || !episode.IsSpecial)
-            .Where(episode => !episode.AirDate.HasValue || episode.AirDate.Value <= today)
-            .Select(episode => episode.EpisodeKey)
+        var catalogEpisodeKeys = filteredEpisodes
+            .Select(static e => e.EpisodeKey)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(static key => key, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -246,12 +315,26 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
             .OrderBy(static key => key, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        var missingKeysSet = new HashSet<string>(missingEpisodeKeys, StringComparer.OrdinalIgnoreCase);
+        var missingEpisodes = filteredEpisodes
+            .Where(e => missingKeysSet.Contains(e.EpisodeKey))
+            .OrderBy(static e => e.EpisodeKey, StringComparer.OrdinalIgnoreCase)
+            .Select(static e => new MissingEpisodeInfo(e.EpisodeKey, e.Title, e.AirDate))
+            .ToList();
+
         return CatalogEvaluationResult.Matched(
             catalogSeries.Title,
             catalogSeries.Year,
             catalogEpisodeKeys.Count,
             missingEpisodeKeys,
+            missingEpisodes,
             extraEpisodeKeys,
+            catalogSeries.Summary,
+            catalogSeries.Genres,
+            catalogSeries.Network,
+            catalogSeries.SeriesStatus,
+            catalogSeries.Rating,
+            catalogSeries.ImageUrl,
             missingEpisodeKeys.Count == 0
                 ? $"Matched against {provider.DisplayName}; no missing aired episodes found."
                 : $"Matched against {provider.DisplayName}; {missingEpisodeKeys.Count} aired episode(s) missing.");
@@ -284,7 +367,21 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
 
         public int CatalogEpisodeCount { get; init; }
 
+        public string? Summary { get; init; }
+
+        public List<string> Genres { get; init; } = [];
+
+        public string? Network { get; init; }
+
+        public string? SeriesStatus { get; init; }
+
+        public double? Rating { get; init; }
+
+        public string? ImageUrl { get; init; }
+
         public List<string> MissingEpisodeKeys { get; init; } = [];
+
+        public List<MissingEpisodeInfo> MissingEpisodes { get; init; } = [];
 
         public List<string> ExtraEpisodeKeys { get; init; } = [];
 
@@ -305,7 +402,14 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
             int? matchedYear,
             int catalogEpisodeCount,
             List<string> missingEpisodeKeys,
+            List<MissingEpisodeInfo> missingEpisodes,
             List<string> extraEpisodeKeys,
+            string? summary,
+            List<string> genres,
+            string? network,
+            string? seriesStatus,
+            double? rating,
+            string? imageUrl,
             string message) => new()
         {
             Status = CatalogLookupStatus.Matched,
@@ -314,7 +418,14 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
             MatchedYear = matchedYear,
             CatalogEpisodeCount = catalogEpisodeCount,
             MissingEpisodeKeys = missingEpisodeKeys,
-            ExtraEpisodeKeys = extraEpisodeKeys
+            MissingEpisodes = missingEpisodes,
+            ExtraEpisodeKeys = extraEpisodeKeys,
+            Summary = summary,
+            Genres = genres,
+            Network = network,
+            SeriesStatus = seriesStatus,
+            Rating = rating,
+            ImageUrl = imageUrl
         };
     }
 }

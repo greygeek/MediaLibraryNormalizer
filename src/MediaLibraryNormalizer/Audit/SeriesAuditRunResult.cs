@@ -66,6 +66,18 @@ public class SeriesAuditItem
 
     public int CatalogEpisodeCount { get; init; }
 
+    public string? CatalogSummary { get; init; }
+
+    public List<string> CatalogGenres { get; init; } = [];
+
+    public string? CatalogNetwork { get; init; }
+
+    public string? CatalogSeriesStatus { get; init; }
+
+    public double? CatalogRating { get; init; }
+
+    public string? CatalogImageUrl { get; init; }
+
     public int MissingEpisodeCount { get; init; }
 
     public int ExtraEpisodeCount { get; init; }
@@ -73,6 +85,8 @@ public class SeriesAuditItem
     public List<string> EpisodeKeys { get; init; } = [];
 
     public List<string> MissingEpisodeKeys { get; init; } = [];
+
+    public List<MissingEpisodeInfo> MissingEpisodes { get; init; } = [];
 
     public List<string> ExtraEpisodeKeys { get; init; } = [];
 

@@ -17,6 +17,9 @@
     "UseHash": false,
     "Verbose": false,
     "UndoFile": null,
+    // Catalog settings
+    "TheTvdbApiKey": "69B6163BEDB649.38042262",
+    "NzbApiKey": null,
     // AI settings
     // Prefer setting the API key via environment variable: NORMALIZER_AI_KEY
     "AiEndpoint": "https://api.openai.com/v1/chat/completions",

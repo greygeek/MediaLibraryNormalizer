@@ -65,4 +65,12 @@ public class NormalizerConfig
 
     /// <summary>AI model name.</summary>
     public string? AiModel { get; set; }
+
+    // --- Catalog settings ---
+
+    /// <summary>TheTVDB personal API key (from thetvdb.com → Account → API Keys).</summary>
+    public string? TheTvdbApiKey { get; set; }
+
+    /// <summary>NZBPlanet API key for Usenet availability checks (optional).</summary>
+    public string? NzbApiKey { get; set; }
 }

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -122,7 +123,12 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         _runner = runner;
         _auditRunner = auditRunner;
-        MissingEpisodeFinder = new MissingEpisodeFinderViewModel(_auditRunner);
+
+        var dbPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "MediaLibraryNormalizer", "audit.db");
+        var repository = new SqliteAuditRepository(dbPath);
+        MissingEpisodeFinder = new MissingEpisodeFinderViewModel(_auditRunner, repository);
 
         PreviewCommand = new AsyncRelayCommand(() => ExecuteRunAsync(dryRun: true), CanRunPreview);
         MergeCommand = new AsyncRelayCommand(() => ExecuteRunAsync(dryRun: false), CanRunMerge);
@@ -319,6 +325,10 @@ public partial class MainWindowViewModel : ViewModelBase
         DeleteSamples = config.DeleteSamples;
         MissingEpisodeFinder.LibraryPath = config.LibraryPath;
         MissingEpisodeFinder.Verbose = config.Verbose;
+        if (!string.IsNullOrWhiteSpace(config.TheTvdbApiKey))
+            MissingEpisodeFinder.TheTvdbApiKey = config.TheTvdbApiKey;
+        if (!string.IsNullOrWhiteSpace(config.NzbApiKey))
+            MissingEpisodeFinder.NzbApiKey = config.NzbApiKey;
         _hasFreshPreview = false;
     }
 

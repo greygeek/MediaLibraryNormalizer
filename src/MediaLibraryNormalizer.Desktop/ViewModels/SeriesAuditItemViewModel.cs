@@ -20,7 +20,8 @@ public class SeriesAuditItemViewModel
         UnparseableFileCount = item.UnparseableFileCount;
         Status = item.Status;
         EpisodePreview = item.EpisodeKeys.Take(10).ToList();
-        MissingEpisodePreview = item.MissingEpisodeKeys.Take(10).ToList();
+        MissingEpisodesPreview = item.MissingEpisodes.Take(10).ToList();
+        Genres = item.CatalogGenres;
 
         var unparseableFiles = new List<string>();
         foreach (var path in item.UnparseableFiles)
@@ -38,7 +39,7 @@ public class SeriesAuditItemViewModel
 
     public string OriginalTitle { get; }
 
-    private SeriesAuditItem Item { get; }
+    public SeriesAuditItem Item { get; }
 
     public string NormalizedTitle { get; }
 
@@ -56,9 +57,35 @@ public class SeriesAuditItemViewModel
 
     public IReadOnlyList<string> EpisodePreview { get; }
 
-    public IReadOnlyList<string> MissingEpisodePreview { get; }
+    public IReadOnlyList<MediaLibraryNormalizer.Audit.MissingEpisodeInfo> MissingEpisodesPreview { get; }
 
     public IReadOnlyList<string> UnparseableFiles { get; }
+
+    public IReadOnlyList<string> Genres { get; }
+
+    public string GenreText => Genres.Count > 0
+        ? string.Join(" · ", Genres)
+        : string.Empty;
+
+    public string? CatalogSummaryText => Item.CatalogSummary;
+
+    public string? Network => Item.CatalogNetwork;
+
+    public string? SeriesStatus => Item.CatalogSeriesStatus;
+
+    public string? RatingText => Item.CatalogRating.HasValue
+        ? $"★ {Item.CatalogRating.Value:F1}"
+        : null;
+
+    public string? ImageUrl => Item.CatalogImageUrl;
+
+    public bool HasMissingEpisodes => Item.MissingEpisodeCount > 0;
+
+    public bool HasMetadata =>
+        Item.CatalogStatus == CatalogLookupStatus.Matched
+        && (!string.IsNullOrWhiteSpace(Item.CatalogSummary)
+            || Item.CatalogGenres.Count > 0
+            || Item.CatalogRating.HasValue);
 
     public string DisplayTitle => Year.HasValue ? $"{NormalizedTitle} ({Year})" : NormalizedTitle;
 
@@ -97,9 +124,13 @@ public class SeriesAuditItemViewModel
         ? "No parsed episode keys yet."
         : string.Join(", ", EpisodePreview) + (ParsedEpisodeCount > EpisodePreview.Count ? " ..." : string.Empty);
 
-    public string MissingEpisodePreviewSummary => MissingEpisodePreview.Count == 0
+    public string MissingEpisodePreviewSummary => MissingEpisodesPreview.Count == 0
         ? "No missing aired episodes found."
-        : string.Join(", ", MissingEpisodePreview) + (Item.MissingEpisodeCount > MissingEpisodePreview.Count ? " ..." : string.Empty);
+        : string.Join(Environment.NewLine, MissingEpisodesPreview.Select(static e =>
+            e.AirDate.HasValue
+                ? $"{e.Key}  {e.Title}  ({e.AirDate.Value:yyyy-MM-dd})"
+                : string.IsNullOrWhiteSpace(e.Title) ? e.Key : $"{e.Key}  {e.Title}"))
+          + (Item.MissingEpisodeCount > MissingEpisodesPreview.Count ? Environment.NewLine + "..." : string.Empty);
 
     public string UnparseableSummary => UnparseableFiles.Count == 0
         ? "No unparseable files."

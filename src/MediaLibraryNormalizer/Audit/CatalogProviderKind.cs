@@ -3,5 +3,6 @@ namespace MediaLibraryNormalizer.Audit;
 public enum CatalogProviderKind
 {
     None,
-    TvMaze
+    TvMaze,
+    TheTvdb
 }
