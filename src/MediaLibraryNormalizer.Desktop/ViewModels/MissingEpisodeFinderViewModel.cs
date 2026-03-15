@@ -211,6 +211,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     partial void OnNzbApiKeyChanged(string value)
     {
         OnPropertyChanged(nameof(IsNzbConfigured));
+        OnPropertyChanged(nameof(QueueMissingDownloadsToolTip));
         CheckUsenetCommand.NotifyCanExecuteChanged();
         QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
     }
@@ -233,6 +234,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         NzbResults.Clear();
         OnPropertyChanged(nameof(HasNzbResults));
         IsPendingDelete = false;
+        OnPropertyChanged(nameof(QueueMissingDownloadsToolTip));
         CheckUsenetCommand.NotifyCanExecuteChanged();
         QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
         PendingDeleteSeriesCommand.NotifyCanExecuteChanged();
@@ -250,6 +252,11 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
     private bool CanQueueMissingDownloads() => !IsBusy && !IsQueueingDownloads && IsNzbConfigured
         && SelectedSeries is { HasMissingEpisodes: true };
+
+    public string QueueMissingDownloadsToolTip =>
+        !IsNzbConfigured ? "Enter an NZBPlanet API key in Settings to enable this."
+        : SelectedSeries is not { HasMissingEpisodes: true } ? "No missing episodes for this series."
+        : "Search NZBPlanet for each missing episode and add the best match to your cart.";
 
     private bool CanModifySeries() => SelectedSeries is not null && !IsBusy;
 

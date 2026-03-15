@@ -398,9 +398,8 @@
                                 <WrapPanel Orientation="Horizontal">
                                     <Button Margin="0,0,8,4"
                                             Command="{Binding MissingEpisodeFinder.QueueMissingDownloadsCommand}"
-                                            IsVisible="{Binding MissingEpisodeFinder.IsNzbConfigured}"
                                             Content="Queue Missing Downloads"
-                                            ToolTip.Tip="Search NZBPlanet for each missing episode and add the best match to your cart"/>
+                                            ToolTip.Tip="{Binding MissingEpisodeFinder.QueueMissingDownloadsToolTip}"/>
                                     <Button Margin="0,0,0,4"
                                             Command="{Binding MissingEpisodeFinder.PendingDeleteSeriesCommand}"
                                             IsVisible="{Binding MissingEpisodeFinder.IsPendingDelete, Converter={x:Static BoolConverters.Not}}"
