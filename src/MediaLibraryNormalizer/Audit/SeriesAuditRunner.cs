@@ -155,7 +155,8 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
                         MissingEpisodeKeys = missingEpisodeKeys,
                         MissingEpisodes = missingEpisodes,
                         ExtraEpisodeKeys = extraEpisodeKeys,
-                        UnparseableFiles = unparseableFiles.OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).ToList()
+                        UnparseableFiles = unparseableFiles.OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).ToList(),
+                        FolderPath = item.Path
                     });
 
                     progress?.Report($"Indexed {item.OriginalName}");

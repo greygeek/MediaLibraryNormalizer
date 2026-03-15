@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -14,6 +15,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     private readonly ISeriesAuditRunner _auditRunner;
     private readonly IAuditRepository? _repository;
     private readonly ICatalogCache? _catalogCache;
+    private SeriesAuditRunResult? _lastRunResult;
 
     public MissingEpisodeFinderViewModel()
         : this(new SeriesAuditRunner())
@@ -31,6 +33,10 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         ClearInventoryCommand = new RelayCommand(ClearInventory, CanClearInventory);
         LoadLastRunCommand = new AsyncRelayCommand(LoadLastRunAsync, CanLoadLastRun);
         CheckUsenetCommand = new AsyncRelayCommand(CheckUsenetAsync, CanCheckUsenet);
+        QueueMissingDownloadsCommand = new AsyncRelayCommand(QueueMissingDownloadsAsync, CanQueueMissingDownloads);
+        PendingDeleteSeriesCommand = new RelayCommand(PendingDeleteSeries, CanModifySeries);
+        ConfirmDeleteSeriesCommand = new AsyncRelayCommand(ConfirmDeleteSeriesAsync, CanModifySeries);
+        CancelDeleteSeriesCommand = new RelayCommand(() => IsPendingDelete = false);
     }
 
     public ObservableCollection<SeriesAuditItemViewModel> Series { get; } = [];
@@ -50,6 +56,14 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     public IAsyncRelayCommand LoadLastRunCommand { get; }
 
     public IAsyncRelayCommand CheckUsenetCommand { get; }
+
+    public IAsyncRelayCommand QueueMissingDownloadsCommand { get; }
+
+    public IRelayCommand PendingDeleteSeriesCommand { get; }
+
+    public IAsyncRelayCommand ConfirmDeleteSeriesCommand { get; }
+
+    public IRelayCommand CancelDeleteSeriesCommand { get; }
 
     [ObservableProperty]
     private string libraryPath = string.Empty;
@@ -80,6 +94,12 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool isCheckingUsenet;
+
+    [ObservableProperty]
+    private bool isQueueingDownloads;
+
+    [ObservableProperty]
+    private bool isPendingDelete;
 
     [ObservableProperty]
     private string statusMessage = "Ready to scan local inventory.";
@@ -178,6 +198,9 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         ClearInventoryCommand.NotifyCanExecuteChanged();
         LoadLastRunCommand.NotifyCanExecuteChanged();
         CheckUsenetCommand.NotifyCanExecuteChanged();
+        QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
+        PendingDeleteSeriesCommand.NotifyCanExecuteChanged();
+        ConfirmDeleteSeriesCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnSelectedCatalogProviderChanged(CatalogProviderKind value)
@@ -189,6 +212,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(IsNzbConfigured));
         CheckUsenetCommand.NotifyCanExecuteChanged();
+        QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnLibraryPathChanged(string value)
@@ -208,7 +232,11 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         OnPropertyChanged(nameof(SelectedSeriesUnparseableSummary));
         NzbResults.Clear();
         OnPropertyChanged(nameof(HasNzbResults));
+        IsPendingDelete = false;
         CheckUsenetCommand.NotifyCanExecuteChanged();
+        QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
+        PendingDeleteSeriesCommand.NotifyCanExecuteChanged();
+        ConfirmDeleteSeriesCommand.NotifyCanExecuteChanged();
     }
 
     private bool CanRunInventory() => !IsBusy && !string.IsNullOrWhiteSpace(LibraryPath);
@@ -219,6 +247,11 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
     private bool CanCheckUsenet() => !IsBusy && !IsCheckingUsenet && IsNzbConfigured
         && SelectedSeries is { HasMissingEpisodes: true };
+
+    private bool CanQueueMissingDownloads() => !IsBusy && !IsQueueingDownloads && IsNzbConfigured
+        && SelectedSeries is { HasMissingEpisodes: true };
+
+    private bool CanModifySeries() => SelectedSeries is not null && !IsBusy;
 
     private async Task RunInventoryAsync()
     {
@@ -308,6 +341,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         IsAuditControlsExpanded = false;
         OnPropertyChanged(nameof(HasResults));
         OnPropertyChanged(nameof(RunSummaryLine));
+        _lastRunResult = result;
     }
 
     private void ClearInventory()
@@ -333,6 +367,8 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         StatusMessage = "Inventory results cleared.";
         ClearInventoryCommand.NotifyCanExecuteChanged();
         IsAuditControlsExpanded = true;
+        IsPendingDelete = false;
+        _lastRunResult = null;
         OnPropertyChanged(nameof(HasResults));
         OnPropertyChanged(nameof(RunSummaryLine));
     }
@@ -407,6 +443,121 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         {
             IsCheckingUsenet = false;
             CheckUsenetCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private async Task QueueMissingDownloadsAsync()
+    {
+        if (SelectedSeries is null || string.IsNullOrWhiteSpace(NzbApiKey)) return;
+
+        IsQueueingDownloads = true;
+        var series = SelectedSeries;
+        var queued = 0;
+        var notFound = 0;
+        StatusMessage = $"Queuing missing downloads for {series.DisplayTitle}...";
+        ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Queuing NZBPlanet downloads for {series.DisplayTitle}...");
+
+        try
+        {
+            using var checker = new NzbPlanetAvailabilityChecker(NzbApiKey.Trim());
+            foreach (var ep in series.Item.MissingEpisodes)
+            {
+                var results = await checker.SearchAsync(
+                    series.Item.OriginalTitle,
+                    ParseSeason(ep.Key),
+                    ParseEpisode(ep.Key));
+
+                if (results.Count == 0 || string.IsNullOrWhiteSpace(results[0].NzbId))
+                {
+                    notFound++;
+                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → not found on NZBPlanet.");
+                    continue;
+                }
+
+                var added = await checker.AddToCartAsync(results[0].NzbId!);
+                if (added)
+                {
+                    queued++;
+                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → added to cart: {results[0].Title}");
+                }
+                else
+                {
+                    notFound++;
+                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → cart add failed.");
+                }
+            }
+
+            StatusMessage = $"Queued {queued} of {queued + notFound} missing episodes for {series.DisplayTitle}.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = "Queue failed.";
+            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  ERROR: {ex.Message}");
+        }
+        finally
+        {
+            IsQueueingDownloads = false;
+            QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private void PendingDeleteSeries()
+    {
+        if (SelectedSeries is null) return;
+        IsPendingDelete = true;
+        StatusMessage = $"Confirm: permanently delete all files for '{SelectedSeries.DisplayTitle}'?";
+    }
+
+    private async Task ConfirmDeleteSeriesAsync()
+    {
+        if (SelectedSeries is null) return;
+
+        var series = SelectedSeries;
+        IsPendingDelete = false;
+        IsBusy = true;
+        StatusMessage = $"Deleting {series.DisplayTitle}...";
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(series.FolderPath) && Directory.Exists(series.FolderPath))
+            {
+                await Task.Run(() => Directory.Delete(series.FolderPath, recursive: true));
+                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Deleted folder: {series.FolderPath}");
+            }
+
+            Series.Remove(series);
+            SelectedSeries = FilteredSeries.FirstOrDefault();
+
+            if (_repository is not null && _lastRunResult is not null)
+            {
+                var pruned = new SeriesAuditRunResult
+                {
+                    LibraryPath = _lastRunResult.LibraryPath,
+                    Series = _lastRunResult.Series
+                        .Where(s => !string.Equals(s.FolderPath, series.FolderPath, StringComparison.OrdinalIgnoreCase))
+                        .ToList(),
+                    Errors = _lastRunResult.Errors,
+                    Summary = _lastRunResult.Summary
+                };
+                _lastRunResult = pruned;
+                await _repository.SaveRunAsync(pruned);
+                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Database entry removed for {series.DisplayTitle}.");
+            }
+
+            StatusMessage = $"Deleted {series.DisplayTitle}.";
+            SeriesCount = Series.Count;
+            OnPropertyChanged(nameof(HasResults));
+            OnPropertyChanged(nameof(RunSummaryLine));
+            ClearInventoryCommand.NotifyCanExecuteChanged();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = "Deletion failed.";
+            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  ERROR: {ex.Message}");
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 

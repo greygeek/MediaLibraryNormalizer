@@ -91,4 +91,6 @@ public class SeriesAuditItem
     public List<string> ExtraEpisodeKeys { get; init; } = [];
 
     public List<string> UnparseableFiles { get; init; } = [];
+
+    public string FolderPath { get; init; } = string.Empty;
 }

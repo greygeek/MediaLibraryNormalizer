@@ -68,13 +68,21 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
                     ? dt : DateTimeOffset.MinValue;
                 var sizeStr = item.Element("enclosure")?.Attribute("length")?.Value;
                 long sizeBytes = sizeStr is not null && long.TryParse(sizeStr, out var sz) ? sz : 0L;
-                return new NzbSearchResult(title, sizeBytes, postedAt, link);
+                var guid = item.Element("guid")?.Value;
+                return new NzbSearchResult(title, sizeBytes, postedAt, link, guid);
             }).ToList();
         }
         catch
         {
             return [];
         }
+    }
+
+    public async Task<bool> AddToCartAsync(string nzbId, CancellationToken ct = default)
+    {
+        var url = $"{ApiBase}?t=cart&action=add&id={Uri.EscapeDataString(nzbId)}&apikey={Uri.EscapeDataString(_apiKey)}";
+        using var response = await _httpClient.GetAsync(url, ct);
+        return response.IsSuccessStatusCode;
     }
 
     public void Dispose() => _httpClient.Dispose();

@@ -23,6 +23,8 @@ public class SeriesAuditItemViewModel
         MissingEpisodesPreview = item.MissingEpisodes.Take(10).ToList();
         Genres = item.CatalogGenres;
 
+        FolderPath = item.FolderPath;
+
         var unparseableFiles = new List<string>();
         foreach (var path in item.UnparseableFiles)
         {
@@ -38,6 +40,8 @@ public class SeriesAuditItemViewModel
     }
 
     public string OriginalTitle { get; }
+
+    public string FolderPath { get; }
 
     public SeriesAuditItem Item { get; }
 

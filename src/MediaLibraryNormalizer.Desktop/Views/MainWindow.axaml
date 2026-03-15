@@ -393,6 +393,38 @@
                         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                             <StackPanel Spacing="12">
                                 <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesTitle}" FontSize="22" FontWeight="Bold" TextWrapping="Wrap"/>
+
+                                <!-- Per-series action buttons -->
+                                <WrapPanel Orientation="Horizontal">
+                                    <Button Margin="0,0,8,4"
+                                            Command="{Binding MissingEpisodeFinder.QueueMissingDownloadsCommand}"
+                                            IsVisible="{Binding MissingEpisodeFinder.IsNzbConfigured}"
+                                            Content="Queue Missing Downloads"
+                                            ToolTip.Tip="Search NZBPlanet for each missing episode and add the best match to your cart"/>
+                                    <Button Margin="0,0,0,4"
+                                            Command="{Binding MissingEpisodeFinder.PendingDeleteSeriesCommand}"
+                                            IsVisible="{Binding MissingEpisodeFinder.IsPendingDelete, Converter={x:Static BoolConverters.Not}}"
+                                            Content="Delete Series"
+                                            ToolTip.Tip="Permanently delete all files and folders for this series and remove it from the database"/>
+                                </WrapPanel>
+
+                                <!-- Delete confirmation banner -->
+                                <Border IsVisible="{Binding MissingEpisodeFinder.IsPendingDelete}"
+                                        Padding="12" CornerRadius="10"
+                                        BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1"
+                                        Background="#40E04444">
+                                    <StackPanel Spacing="8">
+                                        <TextBlock Text="This will permanently delete all files and folders on disk and cannot be undone."
+                                                   FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                        <WrapPanel Orientation="Horizontal">
+                                            <Button Margin="0,0,8,0"
+                                                    Command="{Binding MissingEpisodeFinder.ConfirmDeleteSeriesCommand}"
+                                                    Content="Confirm Delete"/>
+                                            <Button Command="{Binding MissingEpisodeFinder.CancelDeleteSeriesCommand}"
+                                                    Content="Cancel"/>
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </Border>
                                 <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesSummary}" Opacity="0.78" TextWrapping="Wrap"/>
                                 <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesCatalogSummary}" Opacity="0.78" TextWrapping="Wrap"/>
                                 <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesMissingSummary}" FontWeight="SemiBold" TextWrapping="Wrap"/>

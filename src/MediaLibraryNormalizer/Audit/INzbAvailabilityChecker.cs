@@ -14,4 +14,10 @@ public interface INzbAvailabilityChecker
         string? tvMazeId = null,
         string? tvdbId = null,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Adds an NZB to the NZBPlanet cart using its <paramref name="nzbId"/> (GUID from the search results).
+    /// Returns <see langword="true"/> when the API responds with a success status.
+    /// </summary>
+    Task<bool> AddToCartAsync(string nzbId, CancellationToken ct = default);
 }
