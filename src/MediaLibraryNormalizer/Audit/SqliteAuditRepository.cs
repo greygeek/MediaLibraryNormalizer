@@ -23,6 +23,14 @@ public sealed class SqliteAuditRepository(AppDbContextFactory factory) : IAuditR
     public async Task SaveRunAsync(SeriesAuditRunResult result, CancellationToken ct = default)
     {
         await using var db = factory.Create();
+
+        // Replace any existing rows for this library path — only one saved run per path is needed.
+        var stale = await db.AuditRuns
+            .Where(r => r.LibraryPath == result.LibraryPath)
+            .ToListAsync(ct);
+        if (stale.Count > 0)
+            db.AuditRuns.RemoveRange(stale);
+
         db.AuditRuns.Add(new AuditRunEntity
         {
             RunDate = DateTime.UtcNow.ToString("O"),
