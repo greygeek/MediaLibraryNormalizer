@@ -317,6 +317,9 @@
                     <DockPanel>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <Button Command="{Binding MissingEpisodeFinder.RunInventoryCommand}" Content="Run Audit"/>
+                            <Button Command="{Binding MissingEpisodeFinder.CancelInventoryCommand}" Content="Cancel"
+                                    IsVisible="{Binding MissingEpisodeFinder.IsBusy}"
+                                    ToolTip.Tip="Cancel the running audit"/>
                             <Button Command="{Binding MissingEpisodeFinder.LoadLastRunCommand}" Content="Load Last Run"
                                     IsVisible="{Binding MissingEpisodeFinder.HasLastSavedRun}"
                                     ToolTip.Tip="{Binding MissingEpisodeFinder.LastSavedRunDate, StringFormat='Saved: {0}'}"/>

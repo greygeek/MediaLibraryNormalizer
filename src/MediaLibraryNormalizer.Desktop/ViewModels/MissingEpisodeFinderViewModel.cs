@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -30,6 +31,9 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         _repository = repository;
         _catalogCache = repository as ICatalogCache;
         RunInventoryCommand = new AsyncRelayCommand(RunInventoryAsync, CanRunInventory);
+        CancelInventoryCommand = new RelayCommand(
+            () => RunInventoryCommand.Cancel(),
+            () => RunInventoryCommand.IsRunning);
         ClearInventoryCommand = new RelayCommand(ClearInventory, CanClearInventory);
         LoadLastRunCommand = new AsyncRelayCommand(LoadLastRunAsync, CanLoadLastRun);
         CheckUsenetCommand = new AsyncRelayCommand(CheckUsenetAsync, CanCheckUsenet);
@@ -50,6 +54,8 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     public IReadOnlyList<CatalogProviderKind> CatalogProviders { get; } = Enum.GetValues<CatalogProviderKind>();
 
     public IAsyncRelayCommand RunInventoryCommand { get; }
+
+    public IRelayCommand CancelInventoryCommand { get; }
 
     public IRelayCommand ClearInventoryCommand { get; }
 
@@ -195,6 +201,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     partial void OnIsBusyChanged(bool value)
     {
         RunInventoryCommand.NotifyCanExecuteChanged();
+        CancelInventoryCommand.NotifyCanExecuteChanged();
         ClearInventoryCommand.NotifyCanExecuteChanged();
         LoadLastRunCommand.NotifyCanExecuteChanged();
         CheckUsenetCommand.NotifyCanExecuteChanged();
@@ -260,9 +267,10 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
     private bool CanModifySeries() => SelectedSeries is not null && !IsBusy;
 
-    private async Task RunInventoryAsync()
+    private async Task RunInventoryAsync(CancellationToken ct = default)
     {
         IsBusy = true;
+        CancelInventoryCommand.NotifyCanExecuteChanged();
         StatusMessage = "Scanning local inventory...";
         ActivityLog.Clear();
         Errors.Clear();
@@ -283,7 +291,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                 CatalogProvider = SelectedCatalogProvider,
                 TheTvdbApiKey = TheTvdbApiKey.Trim(),
                 NzbApiKey = NzbApiKey.Trim().Length > 0 ? NzbApiKey.Trim() : null
-            }, progress, _catalogCache);
+            }, progress, _catalogCache, ct);
 
             ApplyResult(result);
 
@@ -299,6 +307,11 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                 ? "Local inventory scan completed. Enable a catalog provider to check for missing episodes."
                 : "Inventory and catalog lookup completed.";
         }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Audit run cancelled.";
+            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Audit run cancelled by user.");
+        }
         catch (Exception ex)
         {
             Errors.Add(ex.Message);
@@ -309,6 +322,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
+            CancelInventoryCommand.NotifyCanExecuteChanged();
         }
     }
 

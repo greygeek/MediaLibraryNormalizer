@@ -151,7 +151,8 @@ public sealed class TheTvdbSeriesCatalogProvider : ISeriesCatalogProvider, IDisp
         var loginUrl = $"{BaseUrl}/login";
         _log?.Invoke($"[TheTVDB] POST {loginUrl} (authenticating)");
 
-        var loginBody = new TvdbLoginRequest(_apiKey);
+        // Subscriber/user keys go into `pin`; `apikey` is empty for this auth flow.
+        var loginBody = new TvdbLoginRequest(ApiKey: string.Empty, Pin: _apiKey);
         var loginResponse = await _httpClient.PostAsJsonAsync(
             loginUrl, loginBody, cancellationToken);
 
@@ -192,8 +193,11 @@ public sealed class TheTvdbSeriesCatalogProvider : ISeriesCatalogProvider, IDisp
 
     // --- JSON DTOs ---
 
+    // TVDB v4 subscriber/user API keys (the dot-separated format from thetvdb.com → Account → API Keys)
+    // must be sent as the `pin` field; `apikey` is left empty for subscriber authentication.
     private sealed record TvdbLoginRequest(
-        [property: JsonPropertyName("apikey")] string ApiKey);
+        [property: JsonPropertyName("apikey")] string ApiKey,
+        [property: JsonPropertyName("pin")] string Pin);
 
     private sealed class TvdbResponse<T>
     {
