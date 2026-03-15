@@ -93,6 +93,17 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     public bool HasLastSavedRun => !string.IsNullOrEmpty(LastSavedRunDate);
 
     [ObservableProperty]
+    private bool isAuditControlsExpanded = true;
+
+    public bool HasResults => SeriesCount > 0;
+
+    public string RunSummaryLine => SeriesCount == 0
+        ? "No results — run a scan or load a previous run."
+        : MissingEpisodeCount > 0
+            ? $"{SeriesCount:N0} series  •  {CatalogMatchedSeriesCount:N0} matched  •  {MissingEpisodeCount:N0} missing  •  {CatalogAmbiguousSeriesCount:N0} ambiguous  •  {UnparseableFileCount:N0} unparseable"
+            : $"{SeriesCount:N0} series  •  {ParsedEpisodeCount:N0} parsed episodes  •  {UnparseableFileCount:N0} unparseable";
+
+    [ObservableProperty]
     private int seriesCount;
 
     [ObservableProperty]
@@ -294,6 +305,9 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         SelectedSeries = Series.FirstOrDefault();
         ClearInventoryCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(FilteredSeries));
+        IsAuditControlsExpanded = false;
+        OnPropertyChanged(nameof(HasResults));
+        OnPropertyChanged(nameof(RunSummaryLine));
     }
 
     private void ClearInventory()
@@ -318,6 +332,9 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         LastRunSummary = "No inventory runs yet.";
         StatusMessage = "Inventory results cleared.";
         ClearInventoryCommand.NotifyCanExecuteChanged();
+        IsAuditControlsExpanded = true;
+        OnPropertyChanged(nameof(HasResults));
+        OnPropertyChanged(nameof(RunSummaryLine));
     }
 
     private async Task LoadLastRunAsync()
