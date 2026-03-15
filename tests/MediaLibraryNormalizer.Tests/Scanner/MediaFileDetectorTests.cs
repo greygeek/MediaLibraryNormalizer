@@ -75,6 +75,7 @@ public class MediaFileDetectorTests
     [InlineData("show.sub", true)]
     [InlineData("show.idx", true)]
     [InlineData("show.nfo", true)]
+    [InlineData("show.txt", true)]
     [InlineData("show.jpg", true)]
     [InlineData("show.png", true)]
     public void IsAssociatedFile_ValidExtensions_ReturnsTrue(string fileName, bool expected)
@@ -84,7 +85,6 @@ public class MediaFileDetectorTests
 
     [Theory]
     [InlineData("show.mkv")]
-    [InlineData("show.txt")]
     [InlineData("show.exe")]
     public void IsAssociatedFile_NonAssociatedFiles_ReturnsFalse(string fileName)
     {

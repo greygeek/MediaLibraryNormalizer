@@ -422,7 +422,7 @@ public class SeriesMerger(
             && sourceEpisode is not null
             && !TryGetSeasonFolderNumber(Path.GetFileName(canonical.Path), out _))
         {
-            segments = [$"Season {sourceEpisode.Season:D2}", segments[0]];
+            segments = [ResolveCanonicalSeasonFolderName(canonical, sourceEpisode.Season), segments[0]];
         }
 
         return Path.Combine(canonical.Path, Path.Combine(segments));

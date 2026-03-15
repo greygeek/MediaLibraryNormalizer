@@ -99,6 +99,29 @@ public class SeriesMergerDiscardModeTests : IDisposable
     }
 
     [Fact]
+    public async Task MergeAsync_UsesExistingSeasonFolderName_WhenSourceIsFlatAndCanonicalHasUnpaddedSeasonSubfolder()
+    {
+        // Canonical has "Season 1" (no zero-padding); duplicate has files at root (no subfolder).
+        // The merged file should land in the existing "Season 1", not a newly created "Season 01".
+        var canonicalDir = CreateDirectory("CanonicalUnpaddedSeason");
+        var canonicalSeasonDir = Directory.CreateDirectory(Path.Combine(canonicalDir, "Season 1")).FullName;
+        var duplicateDir = CreateDirectory("DuplicateFlat");
+
+        var canonicalVideo = CreateFile(canonicalSeasonDir, "Show.S01E01.1080p.x265.mkv");
+        var duplicateVideo = CreateFile(duplicateDir, "Show.S01E02.1080p.x265.mkv");
+
+        var sut = CreateSut(new NormalizerConfig());
+        var group = CreateGroup(canonicalDir, duplicateDir, canonicalVideo, duplicateVideo, [canonicalSeasonDir]);
+
+        var ops = await sut.MergeAsync([group], dryRun: true);
+
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Move
+            && op.Source == duplicateVideo
+            && op.Destination == Path.Combine(canonicalSeasonDir, Path.GetFileName(duplicateVideo)));
+    }
+
+    [Fact]
     public async Task MergeAsync_UsesPaddedSeasonFolderName_WhenEquivalentCanonicalSeasonFolderMissing()
     {
         var canonicalDir = CreateDirectory("Canonical");

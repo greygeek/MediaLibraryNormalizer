@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using MediaLibraryNormalizer.Audit;
 using MediaLibraryNormalizer.Config;
 using MediaLibraryNormalizer.Merging;
 using MediaLibraryNormalizer.Models;
@@ -16,6 +17,7 @@ namespace MediaLibraryNormalizer.Desktop.ViewModels;
 public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly INormalizerRunner _runner;
+    private readonly ISeriesAuditRunner _auditRunner;
     private bool _hasFreshPreview;
 
     public ObservableCollection<DuplicateGroupViewModel> DuplicateGroups { get; } = [];
@@ -24,13 +26,20 @@ public partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<ReviewIssueViewModel> SelectedGroupIssues { get; } = [];
     public ObservableCollection<string> Errors { get; } = [];
     public ObservableCollection<string> ActivityLog { get; } = [];
+    public MissingEpisodeFinderViewModel MissingEpisodeFinder { get; }
 
     public IAsyncRelayCommand PreviewCommand { get; }
     public IAsyncRelayCommand MergeCommand { get; }
+    public IRelayCommand NavigateHomeCommand { get; }
+    public IRelayCommand NavigateToMergeManagerCommand { get; }
+    public IRelayCommand NavigateToMissingEpisodeFinderCommand { get; }
     public IRelayCommand ApproveSelectedGroupCommand { get; }
     public IRelayCommand RemoveSelectedGroupCommand { get; }
     public IRelayCommand ApproveAllActionableCommand { get; }
     public IRelayCommand ClearApprovedGroupsCommand { get; }
+
+    [ObservableProperty]
+    private MainWindowPage activePage = MainWindowPage.Home;
 
     [ObservableProperty]
     private string libraryPath = string.Empty;
@@ -105,16 +114,21 @@ public partial class MainWindowViewModel : ViewModelBase
     private DuplicateGroupViewModel? selectedDuplicateGroup;
 
     public MainWindowViewModel()
-        : this(new NormalizerRunner())
+        : this(new NormalizerRunner(), new SeriesAuditRunner())
     {
     }
 
-    public MainWindowViewModel(INormalizerRunner runner)
+    public MainWindowViewModel(INormalizerRunner runner, ISeriesAuditRunner auditRunner)
     {
         _runner = runner;
+        _auditRunner = auditRunner;
+        MissingEpisodeFinder = new MissingEpisodeFinderViewModel(_auditRunner);
 
         PreviewCommand = new AsyncRelayCommand(() => ExecuteRunAsync(dryRun: true), CanRunPreview);
         MergeCommand = new AsyncRelayCommand(() => ExecuteRunAsync(dryRun: false), CanRunMerge);
+        NavigateHomeCommand = new RelayCommand(() => NavigateTo(MainWindowPage.Home), CanNavigate);
+        NavigateToMergeManagerCommand = new RelayCommand(() => NavigateTo(MainWindowPage.MergeManager), CanNavigate);
+        NavigateToMissingEpisodeFinderCommand = new RelayCommand(() => NavigateTo(MainWindowPage.MissingEpisodeFinder), CanNavigate);
         ApproveSelectedGroupCommand = new RelayCommand(ApproveSelectedGroup, CanApproveSelectedGroup);
         RemoveSelectedGroupCommand = new RelayCommand(RemoveSelectedGroup, CanRemoveSelectedGroup);
         ApproveAllActionableCommand = new RelayCommand(ApproveAllActionable, CanApproveAllActionable);
@@ -124,6 +138,45 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     public string DuplicateGroupsHeader => $"Duplicate Groups ({DuplicateGroups.Count})";
+
+    public bool IsHomePageActive => ActivePage == MainWindowPage.Home;
+
+    public bool IsMergeManagerActive => ActivePage == MainWindowPage.MergeManager;
+
+    public bool IsMissingEpisodeFinderActive => ActivePage == MainWindowPage.MissingEpisodeFinder;
+
+    public string ActiveWorkspaceTitle => ActivePage switch
+    {
+        MainWindowPage.Home => "Choose a workflow",
+        MainWindowPage.MergeManager => "Merge Manager",
+        MainWindowPage.MissingEpisodeFinder => "Missing Episode Finder",
+        _ => "Media Library Normalizer"
+    };
+
+    public string ActiveWorkspaceDescription => ActivePage switch
+    {
+        MainWindowPage.Home => "Launch the existing merge workflow or the new metadata-driven audit workspace.",
+        MainWindowPage.MergeManager => "Preview duplicate groups, approve merges, and execute the existing normalization pipeline.",
+        MainWindowPage.MissingEpisodeFinder => "Audit your library against online episode catalogs and review what is missing before any later acquisition workflow exists.",
+        _ => string.Empty
+    };
+
+    public string HomeStatusSummary => string.IsNullOrWhiteSpace(LibraryPath)
+        ? "Set a library path, then choose a workflow tile."
+        : $"Library path ready: {LibraryPath}";
+
+    public string MergeManagerTileSummary =>
+        "Run dry previews, review duplicate groups, stage approvals, and execute live merges using the current core pipeline.";
+
+    public string MissingEpisodeFinderTileSummary =>
+        "Compare local series against online episode catalogs and produce missing-episode reports. Workspace shell only in this phase.";
+
+    public string MissingEpisodeFinderStatus =>
+        "Navigation shell is implemented. Catalog lookup, reconciliation, and reporting are the next delivery slice.";
+
+    public string MissingEpisodeFinderReadiness => string.IsNullOrWhiteSpace(LibraryPath)
+        ? "Set a shared library path first so the audit workflow can inherit it later."
+        : $"The audit workflow will use {LibraryPath} as its initial library root.";
 
     public string SelectedGroupTitle => SelectedDuplicateGroup?.DisplayName ?? "Select a duplicate group";
 
@@ -158,6 +211,16 @@ public partial class MainWindowViewModel : ViewModelBase
     public string CleanupSummary =>
         $"Approved-folder cleanup: {ApprovedCleanupFolderCount} • Global empty-folder sweep: {GlobalCleanupSweepFolderCount}";
 
+    partial void OnActivePageChanged(MainWindowPage value)
+    {
+        OnPropertyChanged(nameof(IsHomePageActive));
+        OnPropertyChanged(nameof(IsMergeManagerActive));
+        OnPropertyChanged(nameof(IsMissingEpisodeFinderActive));
+        OnPropertyChanged(nameof(ActiveWorkspaceTitle));
+        OnPropertyChanged(nameof(ActiveWorkspaceDescription));
+        RefreshCommandState();
+    }
+
     partial void OnIsBusyChanged(bool value)
     {
         RefreshCommandState();
@@ -165,6 +228,9 @@ public partial class MainWindowViewModel : ViewModelBase
 
     partial void OnLibraryPathChanged(string value)
     {
+        OnPropertyChanged(nameof(HomeStatusSummary));
+        OnPropertyChanged(nameof(MissingEpisodeFinderReadiness));
+        MissingEpisodeFinder.LibraryPath = value;
         InvalidateReviewApprovalWorkflow();
     }
 
@@ -213,6 +279,8 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private bool CanRunPreview() => !IsBusy && !string.IsNullOrWhiteSpace(LibraryPath);
 
+    private bool CanNavigate() => !IsBusy;
+
     private bool CanRunMerge() =>
         !IsBusy
         && !string.IsNullOrWhiteSpace(LibraryPath)
@@ -249,6 +317,8 @@ public partial class MainWindowViewModel : ViewModelBase
         UseHash = config.UseHash;
         Verbose = config.Verbose;
         DeleteSamples = config.DeleteSamples;
+        MissingEpisodeFinder.LibraryPath = config.LibraryPath;
+        MissingEpisodeFinder.Verbose = config.Verbose;
         _hasFreshPreview = false;
     }
 
@@ -454,10 +524,30 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         PreviewCommand.NotifyCanExecuteChanged();
         MergeCommand.NotifyCanExecuteChanged();
+        NavigateHomeCommand.NotifyCanExecuteChanged();
+        NavigateToMergeManagerCommand.NotifyCanExecuteChanged();
+        NavigateToMissingEpisodeFinderCommand.NotifyCanExecuteChanged();
         ApproveSelectedGroupCommand.NotifyCanExecuteChanged();
         RemoveSelectedGroupCommand.NotifyCanExecuteChanged();
         ApproveAllActionableCommand.NotifyCanExecuteChanged();
         ClearApprovedGroupsCommand.NotifyCanExecuteChanged();
+    }
+
+    private void NavigateTo(MainWindowPage page)
+    {
+        if (ActivePage == page)
+            return;
+
+        ActivePage = page;
+        StatusMessage = page switch
+        {
+            MainWindowPage.Home => "Ready.",
+            MainWindowPage.MergeManager => string.IsNullOrWhiteSpace(LibraryPath)
+                ? "Set a library path and run a dry run to inspect duplicate groups."
+                : "Merge Manager ready.",
+            MainWindowPage.MissingEpisodeFinder => "Missing Episode Finder shell ready. Audit engine implementation is next.",
+            _ => StatusMessage
+        };
     }
 
     private void InvalidateReviewApprovalWorkflow()

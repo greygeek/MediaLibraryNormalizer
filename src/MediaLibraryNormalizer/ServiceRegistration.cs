@@ -1,4 +1,5 @@
 using MediaLibraryNormalizer.AI;
+using MediaLibraryNormalizer.Audit;
 using MediaLibraryNormalizer.Config;
 using MediaLibraryNormalizer.Hashing;
 using MediaLibraryNormalizer.Matching;
@@ -71,6 +72,7 @@ public static class ServiceRegistration
 
         // Orchestration
         services.AddSingleton<INormalizerRunner, NormalizerRunner>();
+        services.AddSingleton<ISeriesAuditRunner, SeriesAuditRunner>();
 
         return services.BuildServiceProvider();
     }
