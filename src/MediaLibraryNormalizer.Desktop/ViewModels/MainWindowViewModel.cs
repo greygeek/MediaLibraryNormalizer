@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MediaLibraryNormalizer.Audit;
 using MediaLibraryNormalizer.Config;
+using MediaLibraryNormalizer.Data;
 using MediaLibraryNormalizer.Merging;
 using MediaLibraryNormalizer.Models;
 using MediaLibraryNormalizer.Runner;
@@ -19,7 +20,9 @@ public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly INormalizerRunner _runner;
     private readonly ISeriesAuditRunner _auditRunner;
+    private readonly IAppSettingsRepository _settingsRepo;
     private bool _hasFreshPreview;
+    private bool _settingsLoaded;
 
     public ObservableCollection<DuplicateGroupViewModel> DuplicateGroups { get; } = [];
     public ObservableCollection<OperationItemViewModel> Operations { get; } = [];
@@ -127,8 +130,11 @@ public partial class MainWindowViewModel : ViewModelBase
         var dbPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "MediaLibraryNormalizer", "audit.db");
-        var repository = new SqliteAuditRepository(dbPath);
+        var factory = new AppDbContextFactory(dbPath);
+        var repository = new SqliteAuditRepository(factory);
+        _settingsRepo = new AppSettingsRepository(factory);
         MissingEpisodeFinder = new MissingEpisodeFinderViewModel(_auditRunner, repository);
+        MissingEpisodeFinder.PropertyChanged += OnMissingEpisodeFinderPropertyChanged;
 
         PreviewCommand = new AsyncRelayCommand(() => ExecuteRunAsync(dryRun: true), CanRunPreview);
         MergeCommand = new AsyncRelayCommand(() => ExecuteRunAsync(dryRun: false), CanRunMerge);
@@ -141,7 +147,7 @@ public partial class MainWindowViewModel : ViewModelBase
         ClearApprovedGroupsCommand = new RelayCommand(ClearApprovedGroups, CanClearApprovedGroups);
 
         LoadConfig(ConfigLoader.Load());
-        _ = MissingEpisodeFinder.InitializeAsync();
+        _ = InitializeFromDatabaseAsync(factory);
     }
 
     public string DuplicateGroupsHeader => $"Duplicate Groups ({DuplicateGroups.Count})";
@@ -239,36 +245,43 @@ public partial class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(MissingEpisodeFinderReadiness));
         MissingEpisodeFinder.LibraryPath = value;
         InvalidateReviewApprovalWorkflow();
+        SaveSettings();
     }
 
     partial void OnExactMatchesWithFilesOnlyChanged(bool value)
     {
         InvalidateReviewApprovalWorkflow();
+        SaveSettings();
     }
 
     partial void OnDiscardInferiorDuplicatesChanged(bool value)
     {
         InvalidateReviewApprovalWorkflow();
+        SaveSettings();
     }
 
     partial void OnUseAiChanged(bool value)
     {
         InvalidateReviewApprovalWorkflow();
+        SaveSettings();
     }
 
     partial void OnUseHashChanged(bool value)
     {
         InvalidateReviewApprovalWorkflow();
+        SaveSettings();
     }
 
     partial void OnVerboseChanged(bool value)
     {
         InvalidateReviewApprovalWorkflow();
+        SaveSettings();
     }
 
     partial void OnDeleteSamplesChanged(bool value)
     {
         InvalidateReviewApprovalWorkflow();
+        SaveSettings();
     }
 
     partial void OnSelectedDuplicateGroupChanged(DuplicateGroupViewModel? value)
@@ -331,6 +344,79 @@ public partial class MainWindowViewModel : ViewModelBase
         if (!string.IsNullOrWhiteSpace(config.NzbApiKey))
             MissingEpisodeFinder.NzbApiKey = config.NzbApiKey;
         _hasFreshPreview = false;
+    }
+
+    private async Task InitializeFromDatabaseAsync(AppDbContextFactory factory)
+    {
+        try
+        {
+            await factory.InitializeAsync();
+            var saved = await _settingsRepo.LoadAsync();
+            ApplyDbSettings(saved);
+            await MissingEpisodeFinder.InitializeAsync();
+        }
+        catch
+        {
+            // Startup errors must not crash the app; the JSON-config defaults remain in effect.
+        }
+    }
+
+    private void ApplyDbSettings(AppSettings saved)
+    {
+        // DB values override normalizer.config.json defaults when non-empty.
+        if (!string.IsNullOrWhiteSpace(saved.LibraryPath))
+            LibraryPath = saved.LibraryPath;
+
+        if (!string.IsNullOrWhiteSpace(saved.TheTvdbApiKey))
+            MissingEpisodeFinder.TheTvdbApiKey = saved.TheTvdbApiKey;
+        if (!string.IsNullOrWhiteSpace(saved.NzbApiKey))
+            MissingEpisodeFinder.NzbApiKey = saved.NzbApiKey;
+        if (Enum.TryParse<MediaLibraryNormalizer.Audit.CatalogProviderKind>(saved.CatalogProvider, out var provider))
+            MissingEpisodeFinder.SelectedCatalogProvider = provider;
+
+        MissingEpisodeFinder.IncludeSpecials = saved.IncludeSpecials;
+        MissingEpisodeFinder.Verbose = saved.Verbose;
+        Verbose = saved.Verbose;
+        ExactMatchesWithFilesOnly = saved.ExactMatchesWithFilesOnly;
+        DiscardInferiorDuplicates = saved.DiscardInferiorDuplicates;
+        UseAi = saved.UseAi;
+        UseHash = saved.UseHash;
+        DeleteSamples = saved.DeleteSamples;
+
+        _settingsLoaded = true;
+    }
+
+    private void SaveSettings()
+    {
+        if (!_settingsLoaded) return;
+        _ = _settingsRepo.SaveAsync(BuildCurrentSettings());
+    }
+
+    private AppSettings BuildCurrentSettings() => new()
+    {
+        LibraryPath = LibraryPath,
+        TheTvdbApiKey = MissingEpisodeFinder.TheTvdbApiKey,
+        NzbApiKey = MissingEpisodeFinder.NzbApiKey,
+        CatalogProvider = MissingEpisodeFinder.SelectedCatalogProvider.ToString(),
+        IncludeSpecials = MissingEpisodeFinder.IncludeSpecials,
+        Verbose = Verbose,
+        ExactMatchesWithFilesOnly = ExactMatchesWithFilesOnly,
+        DiscardInferiorDuplicates = DiscardInferiorDuplicates,
+        UseAi = UseAi,
+        UseHash = UseHash,
+        DeleteSamples = DeleteSamples,
+    };
+
+    private void OnMissingEpisodeFinderPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is
+            nameof(MissingEpisodeFinderViewModel.TheTvdbApiKey) or
+            nameof(MissingEpisodeFinderViewModel.NzbApiKey) or
+            nameof(MissingEpisodeFinderViewModel.SelectedCatalogProvider) or
+            nameof(MissingEpisodeFinderViewModel.IncludeSpecials))
+        {
+            SaveSettings();
+        }
     }
 
     private async Task ExecuteRunAsync(bool dryRun)

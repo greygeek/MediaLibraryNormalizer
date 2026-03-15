@@ -1,174 +1,105 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.Data.Sqlite;
+using MediaLibraryNormalizer.Data;
+using MediaLibraryNormalizer.Data.Entities;
+using Microsoft.EntityFrameworkCore;
 
 namespace MediaLibraryNormalizer.Audit;
 
 /// <summary>
-/// Single-file SQLite store that implements both audit-run persistence and catalog lookup caching.
-/// The database is created on first use at the supplied <paramref name="dbPath"/>.
+/// EF Core-backed store that implements both <see cref="IAuditRepository"/> and
+/// <see cref="ICatalogCache"/>. Uses <see cref="AppDbContextFactory"/> for short-lived
+/// unit-of-work contexts; schema initialisation is handled by the factory.
 /// </summary>
-public sealed class SqliteAuditRepository : IAuditRepository, ICatalogCache
+public sealed class SqliteAuditRepository(AppDbContextFactory factory) : IAuditRepository, ICatalogCache
 {
-    private readonly string _dbPath;
-    private volatile bool _schemaEnsured;
-    private readonly SemaphoreSlim _schemaSemaphore = new(1, 1);
-
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         Converters = { new JsonStringEnumConverter() }
     };
 
-    public SqliteAuditRepository(string dbPath)
-    {
-        _dbPath = dbPath;
-        Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
-    }
-
-    // ── IAuditRepository ────────────────────────────────────────────────────
+    //  IAuditRepository 
 
     public async Task SaveRunAsync(SeriesAuditRunResult result, CancellationToken ct = default)
     {
-        var json = JsonSerializer.Serialize(result, JsonOptions);
-        using var conn = await OpenAsync(ct);
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText =
-            """
-            INSERT INTO AuditRuns (RunDate, LibraryPath, ResultJson)
-            VALUES (@runDate, @libraryPath, @json);
-            """;
-        cmd.Parameters.AddWithValue("@runDate", DateTime.UtcNow.ToString("O"));
-        cmd.Parameters.AddWithValue("@libraryPath", result.LibraryPath);
-        cmd.Parameters.AddWithValue("@json", json);
-        await cmd.ExecuteNonQueryAsync(ct);
+        await using var db = factory.Create();
+        db.AuditRuns.Add(new AuditRunEntity
+        {
+            RunDate = DateTime.UtcNow.ToString("O"),
+            LibraryPath = result.LibraryPath,
+            ResultJson = JsonSerializer.Serialize(result, JsonOptions)
+        });
+        await db.SaveChangesAsync(ct);
     }
 
     public async Task<(SeriesAuditRunResult Result, DateTime RunDate)?> LoadLatestRunAsync(
         string libraryPath, CancellationToken ct = default)
     {
-        if (!File.Exists(_dbPath)) return null;
+        await using var db = factory.Create();
+        var row = await db.AuditRuns
+            .Where(r => r.LibraryPath == libraryPath)
+            .OrderByDescending(r => r.RunDate)
+            .FirstOrDefaultAsync(ct);
 
-        using var conn = await OpenAsync(ct);
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText =
-            """
-            SELECT RunDate, ResultJson
-            FROM   AuditRuns
-            WHERE  LibraryPath = @libraryPath
-            ORDER  BY RunDate DESC
-            LIMIT  1;
-            """;
-        cmd.Parameters.AddWithValue("@libraryPath", libraryPath);
+        if (row is null) return null;
 
-        using var reader = await cmd.ExecuteReaderAsync(ct);
-        if (!await reader.ReadAsync(ct)) return null;
-
-        var runDate = DateTime.Parse(reader.GetString(0), null,
+        var runDate = DateTime.Parse(row.RunDate, null,
             System.Globalization.DateTimeStyles.RoundtripKind);
-        var result = JsonSerializer.Deserialize<SeriesAuditRunResult>(reader.GetString(1), JsonOptions);
+        var result = JsonSerializer.Deserialize<SeriesAuditRunResult>(row.ResultJson, JsonOptions);
         return result is null ? null : (result, runDate);
     }
 
-    // ── ICatalogCache ────────────────────────────────────────────────────────
+    //  ICatalogCache 
 
     public async Task<CatalogSeries?> GetAsync(
         CatalogProviderKind provider, string normalizedTitle,
         int expiryHours, CancellationToken ct = default)
     {
-        if (!File.Exists(_dbPath)) return null;
+        await using var db = factory.Create();
+        var providerStr = provider.ToString();
+        var key = normalizedTitle.ToLowerInvariant();
 
-        using var conn = await OpenAsync(ct);
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText =
-            """
-            SELECT CachedAt, SeriesJson
-            FROM   CatalogCache
-            WHERE  Provider = @provider AND LookupKey = @key;
-            """;
-        cmd.Parameters.AddWithValue("@provider", provider.ToString());
-        cmd.Parameters.AddWithValue("@key", normalizedTitle.ToLowerInvariant());
+        var row = await db.CatalogCache
+            .FirstOrDefaultAsync(c => c.Provider == providerStr && c.LookupKey == key, ct);
 
-        using var reader = await cmd.ExecuteReaderAsync(ct);
-        if (!await reader.ReadAsync(ct)) return null;
+        if (row is null) return null;
 
-        var cachedAt = DateTime.Parse(reader.GetString(0), null,
+        var cachedAt = DateTime.Parse(row.CachedAt, null,
             System.Globalization.DateTimeStyles.RoundtripKind);
         if (DateTime.UtcNow - cachedAt > TimeSpan.FromHours(expiryHours))
             return null;
 
-        return JsonSerializer.Deserialize<CatalogSeries>(reader.GetString(1), JsonOptions);
+        return JsonSerializer.Deserialize<CatalogSeries>(row.SeriesJson, JsonOptions);
     }
 
     public async Task SetAsync(
         CatalogProviderKind provider, string normalizedTitle,
         CatalogSeries series, CancellationToken ct = default)
     {
+        await using var db = factory.Create();
+        var providerStr = provider.ToString();
+        var key = normalizedTitle.ToLowerInvariant();
         var json = JsonSerializer.Serialize(series, JsonOptions);
-        using var conn = await OpenAsync(ct);
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText =
-            """
-            INSERT INTO CatalogCache (Provider, LookupKey, CachedAt, SeriesJson)
-            VALUES (@provider, @key, @cachedAt, @json)
-            ON CONFLICT(Provider, LookupKey) DO UPDATE SET
-                CachedAt   = excluded.CachedAt,
-                SeriesJson = excluded.SeriesJson;
-            """;
-        cmd.Parameters.AddWithValue("@provider", provider.ToString());
-        cmd.Parameters.AddWithValue("@key", normalizedTitle.ToLowerInvariant());
-        cmd.Parameters.AddWithValue("@cachedAt", DateTime.UtcNow.ToString("O"));
-        cmd.Parameters.AddWithValue("@json", json);
-        await cmd.ExecuteNonQueryAsync(ct);
-    }
 
-    // ── Private helpers ──────────────────────────────────────────────────────
+        var existing = await db.CatalogCache
+            .FirstOrDefaultAsync(c => c.Provider == providerStr && c.LookupKey == key, ct);
 
-    private async Task<SqliteConnection> OpenAsync(CancellationToken ct)
-    {
-        var conn = new SqliteConnection($"Data Source={_dbPath}");
-        await conn.OpenAsync(ct);
-        if (!_schemaEnsured)
+        if (existing is null)
         {
-            await _schemaSemaphore.WaitAsync(ct);
-            try
+            db.CatalogCache.Add(new CatalogCacheEntity
             {
-                if (!_schemaEnsured)
-                {
-                    await EnsureSchemaAsync(conn);
-                    _schemaEnsured = true;
-                }
-            }
-            finally
-            {
-                _schemaSemaphore.Release();
-            }
+                Provider = providerStr,
+                LookupKey = key,
+                CachedAt = DateTime.UtcNow.ToString("O"),
+                SeriesJson = json
+            });
         }
-        return conn;
-    }
+        else
+        {
+            existing.CachedAt = DateTime.UtcNow.ToString("O");
+            existing.SeriesJson = json;
+        }
 
-    private static async Task EnsureSchemaAsync(SqliteConnection conn)
-    {
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText =
-            """
-            CREATE TABLE IF NOT EXISTS AuditRuns (
-                Id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                RunDate     TEXT    NOT NULL,
-                LibraryPath TEXT    NOT NULL,
-                ResultJson  TEXT    NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS IX_AuditRuns_LibraryPath
-                ON AuditRuns (LibraryPath, RunDate DESC);
-            CREATE TABLE IF NOT EXISTS CatalogCache (
-                Id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                Provider   TEXT    NOT NULL,
-                LookupKey  TEXT    NOT NULL,
-                CachedAt   TEXT    NOT NULL,
-                SeriesJson TEXT    NOT NULL
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS UX_CatalogCache
-                ON CatalogCache (Provider, LookupKey);
-            """;
-        await cmd.ExecuteNonQueryAsync();
+        await db.SaveChangesAsync(ct);
     }
 }
