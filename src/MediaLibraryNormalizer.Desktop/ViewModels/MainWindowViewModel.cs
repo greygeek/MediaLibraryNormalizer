@@ -141,6 +141,7 @@ public partial class MainWindowViewModel : ViewModelBase
         ClearApprovedGroupsCommand = new RelayCommand(ClearApprovedGroups, CanClearApprovedGroups);
 
         LoadConfig(ConfigLoader.Load());
+        _ = MissingEpisodeFinder.InitializeAsync();
     }
 
     public string DuplicateGroupsHeader => $"Duplicate Groups ({DuplicateGroups.Count})";

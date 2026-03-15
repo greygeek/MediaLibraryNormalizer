@@ -412,21 +412,21 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
             double? rating,
             string? imageUrl,
             string message) => new()
-        {
-            Status = CatalogLookupStatus.Matched,
-            StatusMessage = message,
-            MatchedTitle = matchedTitle,
-            MatchedYear = matchedYear,
-            CatalogEpisodeCount = catalogEpisodeCount,
-            MissingEpisodeKeys = missingEpisodeKeys,
-            MissingEpisodes = missingEpisodes,
-            ExtraEpisodeKeys = extraEpisodeKeys,
-            Summary = summary,
-            Genres = genres,
-            Network = network,
-            SeriesStatus = seriesStatus,
-            Rating = rating,
-            ImageUrl = imageUrl
-        };
+            {
+                Status = CatalogLookupStatus.Matched,
+                StatusMessage = message,
+                MatchedTitle = matchedTitle,
+                MatchedYear = matchedYear,
+                CatalogEpisodeCount = catalogEpisodeCount,
+                MissingEpisodeKeys = missingEpisodeKeys,
+                MissingEpisodes = missingEpisodes,
+                ExtraEpisodeKeys = extraEpisodeKeys,
+                Summary = summary,
+                Genres = genres,
+                Network = network,
+                SeriesStatus = seriesStatus,
+                Rating = rating,
+                ImageUrl = imageUrl
+            };
     }
 }

@@ -373,6 +373,8 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         OnPropertyChanged(nameof(RunSummaryLine));
     }
 
+    public Task InitializeAsync() => LoadLastRunAsync();
+
     private async Task LoadLastRunAsync()
     {
         if (_repository is null) return;
