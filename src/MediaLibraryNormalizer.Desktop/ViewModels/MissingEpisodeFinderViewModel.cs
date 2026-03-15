@@ -565,14 +565,28 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
             if (_repository is not null && _lastRunResult is not null)
             {
+                var prunedSeries = _lastRunResult.Series
+                    .Where(s => !string.Equals(s.FolderPath, series.FolderPath, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
                 var pruned = new SeriesAuditRunResult
                 {
                     LibraryPath = _lastRunResult.LibraryPath,
-                    Series = _lastRunResult.Series
-                        .Where(s => !string.Equals(s.FolderPath, series.FolderPath, StringComparison.OrdinalIgnoreCase))
-                        .ToList(),
+                    Series = prunedSeries,
                     Errors = _lastRunResult.Errors,
-                    Summary = _lastRunResult.Summary
+                    Summary = new SeriesAuditSummary
+                    {
+                        SeriesScanned          = prunedSeries.Count,
+                        ReadySeries            = prunedSeries.Count(s => s.Status == AuditSeriesStatus.ReadyForCatalogLookup),
+                        PartialSeries          = prunedSeries.Count(s => s.Status == AuditSeriesStatus.PartialInventory),
+                        NoParsedEpisodeSeries  = prunedSeries.Count(s => s.Status == AuditSeriesStatus.NoParsedEpisodes),
+                        ParsedEpisodeCount     = prunedSeries.Sum(s => s.ParsedEpisodeCount),
+                        UnparseableFileCount   = prunedSeries.Sum(s => s.UnparseableFileCount),
+                        CatalogMatchedSeries   = prunedSeries.Count(s => s.CatalogStatus == CatalogLookupStatus.Matched),
+                        CatalogAmbiguousSeries = prunedSeries.Count(s => s.CatalogStatus == CatalogLookupStatus.Ambiguous),
+                        CatalogErrorSeries     = prunedSeries.Count(s => s.CatalogStatus == CatalogLookupStatus.Error),
+                        SeriesWithMissingEpisodes = prunedSeries.Count(s => s.MissingEpisodeCount > 0),
+                        MissingEpisodeCount    = prunedSeries.Sum(s => s.MissingEpisodeCount),
+                    }
                 };
                 _lastRunResult = pruned;
                 await _repository.SaveRunAsync(pruned);
