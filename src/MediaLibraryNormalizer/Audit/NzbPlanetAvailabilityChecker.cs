@@ -114,13 +114,13 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
 
     public async Task<bool> AddToCartAsync(string downloadUrl, CancellationToken ct = default)
     {
-        _log?.Invoke($"[NZBPlanet] Downloading NZB: {downloadUrl.Replace(_apiKey, "***")}");
-        using var response = await _httpClient.GetAsync(downloadUrl, ct);
+        // t=cartadd is the correct NZBPlanet cart endpoint: ?t=cartadd&id=HASH
+        var url = $"{ApiBase}?t=cartadd&id={Uri.EscapeDataString(downloadUrl)}&apikey={Uri.EscapeDataString(_apiKey)}";
+        _log?.Invoke($"[NZBPlanet] CartAdd GET {url.Replace(_apiKey, "***")}");
+        using var response = await _httpClient.GetAsync(url, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
-        _log?.Invoke($"[NZBPlanet] Download response {(int)response.StatusCode} ({response.Content.Headers.ContentType}): " +
-            (body.Length > 200 ? body[..200] + " …" : body));
+        _log?.Invoke($"[NZBPlanet] CartAdd response {(int)response.StatusCode}: {body}");
         if (!response.IsSuccessStatusCode) return false;
-        // Newznab returns HTTP 200 even for API errors — check the XML body.
         return !IsNewznabError(body);
     }
 

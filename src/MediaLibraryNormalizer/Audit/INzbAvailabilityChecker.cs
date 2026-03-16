@@ -16,9 +16,9 @@ public interface INzbAvailabilityChecker
         CancellationToken ct = default);
 
     /// <summary>
-    /// Downloads the NZB at <paramref name="downloadUrl"/> (the enclosure URL from search results).
-    /// NZBPlanet does not support a cart API; fetching the NZB URL directly triggers the grab.
-    /// Returns <see langword="true"/> when the response is a success with no Newznab error in the body.
+    /// Adds an NZB to the user's cart using <paramref name="nzbId"/> (the hash from the search result).
+    /// Uses the NZBPlanet <c>t=cartadd</c> endpoint: <c>?t=cartadd&amp;id=HASH</c>.
+    /// Returns <see langword="true"/> when the response indicates success.
     /// </summary>
-    Task<bool> AddToCartAsync(string downloadUrl, CancellationToken ct = default);
+    Task<bool> AddToCartAsync(string nzbId, CancellationToken ct = default);
 }
