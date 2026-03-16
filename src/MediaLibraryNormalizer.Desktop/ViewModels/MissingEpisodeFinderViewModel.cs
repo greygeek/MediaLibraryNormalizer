@@ -515,8 +515,8 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                     continue;
                 }
 
-                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → selected: {preferred.Title} (id={preferred.NzbId})");
-                var added = await checker.AddToCartAsync(preferred.NzbId);
+                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → selected: {preferred.Title} (id={preferred.NzbId}, userId={preferred.UserId})");
+                var added = await checker.AddToCartAsync(preferred.NzbId, preferred.UserId);
                 if (added)
                 {
                     queued++;

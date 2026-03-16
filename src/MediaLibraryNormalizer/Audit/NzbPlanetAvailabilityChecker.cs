@@ -36,6 +36,10 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
         using var response = await _httpClient.GetAsync(url, ct);
         response.EnsureSuccessStatusCode();
         var xml = await response.Content.ReadAsStringAsync(ct);
+        // Log first RSS item's raw XML so we can see all available fields/attributes.
+        var firstItemXml = System.Text.RegularExpressions.Regex.Match(xml, @"<item>.*?</item>", System.Text.RegularExpressions.RegexOptions.Singleline).Value;
+        if (!string.IsNullOrEmpty(firstItemXml))
+            _log?.Invoke($"[NZBPlanet] First item XML:{Environment.NewLine}{firstItemXml}");
         var results = ParseRssItems(xml);
         _log?.Invoke($"[NZBPlanet] {results.Count} result(s): " +
             string.Join(", ", results.Select(static r => $"{r.Title} ({r.SizeBytes / 1024 / 1024} MB, id={r.NzbId})")));
@@ -82,14 +86,23 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
                 // Fall back to parsing the <guid> which may be a /details/<hash> URL.
                 var guidRaw = item.Element("guid")?.Value;
                 var nzbId = ExtractIdFromUrl(link) ?? ExtractIdFromUrl(guidRaw) ?? ExtractPathSegmentId(guidRaw);
+                var userId = ExtractUserIdFromGetnzbUrl(link);
 
-                return new NzbSearchResult(title, sizeBytes, postedAt, link, nzbId);
+                return new NzbSearchResult(title, sizeBytes, postedAt, link, nzbId, userId);
             }).ToList();
         }
         catch
         {
             return [];
         }
+    }
+
+    /// Extracts the numeric user id from a NZBPlanet getnzb URL (e.g. .../getnzb/HASH.nzb&i=12345&r=...).
+    private static string? ExtractUserIdFromGetnzbUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        var m = System.Text.RegularExpressions.Regex.Match(url, @"[?&]i=(\d+)");
+        return m.Success ? m.Groups[1].Value : null;
     }
 
     /// Extracts the `id` query parameter from a URL (e.g. ?t=get&id=HASH&apikey=...).
@@ -112,11 +125,23 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
         return string.IsNullOrWhiteSpace(segment) ? null : segment;
     }
 
-    public async Task<bool> AddToCartAsync(string downloadUrl, CancellationToken ct = default)
+    public async Task<bool> AddToCartAsync(string nzbId, string? userId = null, CancellationToken ct = default)
     {
-        // t=cartadd is the correct NZBPlanet cart endpoint: ?t=cartadd&id=HASH
-        var url = $"{ApiBase}?t=cartadd&id={Uri.EscapeDataString(downloadUrl)}&apikey={Uri.EscapeDataString(_apiKey)}";
-        _log?.Invoke($"[NZBPlanet] CartAdd GET {url.Replace(_apiKey, "***")}");
+        // NZBPlanet cart endpoint: when userId is available use i=/r= auth (user-specific),
+        // otherwise fall back to apikey= (standard Newznab).
+        string url;
+        string logUrl;
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            url = $"{ApiBase}?t=cartadd&id={Uri.EscapeDataString(nzbId)}&i={Uri.EscapeDataString(userId)}&r={Uri.EscapeDataString(_apiKey)}";
+            logUrl = url.Replace(_apiKey, "***");
+        }
+        else
+        {
+            url = $"{ApiBase}?t=cartadd&id={Uri.EscapeDataString(nzbId)}&apikey={Uri.EscapeDataString(_apiKey)}";
+            logUrl = url.Replace(_apiKey, "***");
+        }
+        _log?.Invoke($"[NZBPlanet] CartAdd GET {logUrl}");
         using var response = await _httpClient.GetAsync(url, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
         _log?.Invoke($"[NZBPlanet] CartAdd response {(int)response.StatusCode}: {body}");

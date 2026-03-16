@@ -20,5 +20,5 @@ public interface INzbAvailabilityChecker
     /// Uses the NZBPlanet <c>t=cartadd</c> endpoint: <c>?t=cartadd&amp;id=HASH</c>.
     /// Returns <see langword="true"/> when the response indicates success.
     /// </summary>
-    Task<bool> AddToCartAsync(string nzbId, CancellationToken ct = default);
+    Task<bool> AddToCartAsync(string nzbId, string? userId = null, CancellationToken ct = default);
 }
