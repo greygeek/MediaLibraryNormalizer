@@ -465,7 +465,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                     ParseSeason(ep.Key),
                     ParseEpisode(ep.Key));
 
-                NzbResults.Add(new NzbEpisodeResultViewModel(ep.Key, ep.Title, results.Count));
+                NzbResults.Add(new NzbEpisodeResultViewModel(ep.Key, ep.Title, results.Count, NzbPlanetAvailabilityChecker.HasH265(results)));
                 ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → {results.Count} NZB(s) found.");
             }
 
@@ -505,18 +505,19 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                     ParseSeason(ep.Key),
                     ParseEpisode(ep.Key));
 
-                if (results.Count == 0 || string.IsNullOrWhiteSpace(results[0].NzbId))
+                var preferred = NzbPlanetAvailabilityChecker.SelectPreferred(results);
+                if (preferred is null || string.IsNullOrWhiteSpace(preferred.NzbId))
                 {
                     notFound++;
                     ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → not found on NZBPlanet.");
                     continue;
                 }
 
-                var added = await checker.AddToCartAsync(results[0].NzbId!);
+                var added = await checker.AddToCartAsync(preferred.NzbId!);
                 if (added)
                 {
                     queued++;
-                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → added to cart: {results[0].Title}");
+                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → added to cart: {preferred.Title}");
                 }
                 else
                 {

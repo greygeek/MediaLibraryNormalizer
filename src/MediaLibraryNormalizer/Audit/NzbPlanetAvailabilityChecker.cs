@@ -42,6 +42,8 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
         sb.Append(ApiBase);
         sb.Append($"?t=tvsearch&apikey={Uri.EscapeDataString(_apiKey)}");
         sb.Append($"&season={season}&ep={episode}");
+        // Size range: 600 MB – 1.2 GB (Newznab uses MB)
+        sb.Append("&minsize=600&maxsize=1229");
         if (!string.IsNullOrWhiteSpace(tvMazeId))
             sb.Append($"&tvmazeid={Uri.EscapeDataString(tvMazeId)}");
         else if (!string.IsNullOrWhiteSpace(tvdbId))
@@ -84,6 +86,25 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
         using var response = await _httpClient.GetAsync(url, ct);
         return response.IsSuccessStatusCode;
     }
+
+    /// <summary>
+    /// Picks the best result from a search response: prefers H265/x265/HEVC releases,
+    /// falls back to the first result if none match.
+    /// </summary>
+    public static NzbSearchResult? SelectPreferred(IReadOnlyList<NzbSearchResult> results)
+    {
+        if (results.Count == 0) return null;
+        return results.FirstOrDefault(static r => IsH265(r.Title)) ?? results[0];
+    }
+
+    public static bool HasH265(IReadOnlyList<NzbSearchResult> results) =>
+        results.Any(static r => IsH265(r.Title));
+
+    private static bool IsH265(string title) =>
+        title.Contains("x265", StringComparison.OrdinalIgnoreCase) ||
+        title.Contains("h265", StringComparison.OrdinalIgnoreCase) ||
+        title.Contains("h.265", StringComparison.OrdinalIgnoreCase) ||
+        title.Contains("hevc", StringComparison.OrdinalIgnoreCase);
 
     public void Dispose() => _httpClient.Dispose();
 }
