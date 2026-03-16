@@ -13,7 +13,7 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
 
     public async Task<SeriesAuditRunResult> RunAsync(
         SeriesAuditOptions options,
-        IProgress<string>? progress = null,
+        IProgress<AuditProgressReport>? progress = null,
         ICatalogCache? catalogCache = null,
         CancellationToken cancellationToken = default)
     {
@@ -34,11 +34,12 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
         var episodeParser = serviceProvider.GetRequiredService<IEpisodeParser>();
         var provider = CreateProvider(options, progress);
 
-        progress?.Report("Scanning local library inventory...");
-
         try
         {
-            var seriesResults = new List<SeriesAuditItem>();
+            // ── Phase 1: local file-system scan (indeterminate) ───────────────────
+            progress?.Report(new AuditProgressReport("Scanning local library inventory..."));
+
+            var scanned = new List<ScannedSeries>();
             var errors = new List<string>();
 
             foreach (var item in scanner.Scan(options.LibraryPath))
@@ -61,9 +62,7 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
                         }
 
                         foreach (var episode in parsedEpisode.Episodes)
-                        {
                             parsedEpisodeKeys.Add($"S{parsedEpisode.Season:D2}E{episode:D2}");
-                        }
                     }
 
                     var status = parsedEpisodeKeys.Count == 0
@@ -72,99 +71,117 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
                             ? AuditSeriesStatus.ReadyForCatalogLookup
                             : AuditSeriesStatus.PartialInventory;
 
-                    var catalogStatus = CatalogLookupStatus.NotRequested;
-                    var catalogStatusMessage = options.CatalogProvider == CatalogProviderKind.None
-                        ? "Catalog lookup not requested."
-                        : "Catalog lookup skipped because no parsed episodes were detected.";
-                    string? catalogMatchedTitle = null;
-                    int? catalogMatchedYear = null;
-                    var catalogEpisodeCount = 0;
-                    var missingEpisodeKeys = new List<string>();
-                    var missingEpisodes = new List<MissingEpisodeInfo>();
-                    var extraEpisodeKeys = new List<string>();
-                    string? catalogSummary = null;
-                    var catalogGenres = new List<string>();
-                    string? catalogNetwork = null;
-                    string? catalogSeriesStatus = null;
-                    double? catalogRating = null;
-                    string? catalogImageUrl = null;
+                    scanned.Add(new ScannedSeries(
+                        item.OriginalName, item.Path, normalized.Title, normalized.Year,
+                        parsedEpisodeKeys, unparseableFiles, status,
+                        item.VideoFiles.Count, item.SeasonFolders.Count));
 
-                    if (provider is not null && parsedEpisodeKeys.Count > 0)
-                    {
-                        progress?.Report($"Searching {provider.DisplayName} for {item.OriginalName}...");
-
-                        try
-                        {
-                            var catalogResult = await LookupCatalogSeriesAsync(
-                                provider,
-                                normalizer,
-                                normalized.Title,
-                                normalized.Year,
-                                parsedEpisodeKeys,
-                                options,
-                                catalogCache,
-                                cancellationToken);
-
-                            catalogStatus = catalogResult.Status;
-                            catalogStatusMessage = catalogResult.StatusMessage;
-                            catalogMatchedTitle = catalogResult.MatchedTitle;
-                            catalogMatchedYear = catalogResult.MatchedYear;
-                            catalogEpisodeCount = catalogResult.CatalogEpisodeCount;
-                            missingEpisodeKeys = catalogResult.MissingEpisodeKeys;
-                            missingEpisodes = catalogResult.MissingEpisodes;
-                            extraEpisodeKeys = catalogResult.ExtraEpisodeKeys;
-                            catalogSummary = catalogResult.Summary;
-                            catalogGenres = catalogResult.Genres;
-                            catalogNetwork = catalogResult.Network;
-                            catalogSeriesStatus = catalogResult.SeriesStatus;
-                            catalogRating = catalogResult.Rating;
-                            catalogImageUrl = catalogResult.ImageUrl;
-                        }
-                        catch (Exception ex)
-                        {
-                            catalogStatus = CatalogLookupStatus.Error;
-                            catalogStatusMessage = ex.Message;
-                        }
-                    }
-
-                    seriesResults.Add(new SeriesAuditItem
-                    {
-                        OriginalTitle = item.OriginalName,
-                        NormalizedTitle = normalized.Title,
-                        Year = normalized.Year,
-                        TotalVideoFiles = item.VideoFiles.Count,
-                        SeasonFolderCount = item.SeasonFolders.Count,
-                        ParsedEpisodeCount = parsedEpisodeKeys.Count,
-                        UnparseableFileCount = unparseableFiles.Count,
-                        Status = status,
-                        CatalogProvider = options.CatalogProvider,
-                        CatalogStatus = catalogStatus,
-                        CatalogStatusMessage = catalogStatusMessage,
-                        CatalogMatchedTitle = catalogMatchedTitle,
-                        CatalogMatchedYear = catalogMatchedYear,
-                        CatalogEpisodeCount = catalogEpisodeCount,
-                        CatalogSummary = catalogSummary,
-                        CatalogGenres = catalogGenres,
-                        CatalogNetwork = catalogNetwork,
-                        CatalogSeriesStatus = catalogSeriesStatus,
-                        CatalogRating = catalogRating,
-                        CatalogImageUrl = catalogImageUrl,
-                        MissingEpisodeCount = missingEpisodeKeys.Count,
-                        ExtraEpisodeCount = extraEpisodeKeys.Count,
-                        EpisodeKeys = parsedEpisodeKeys.OrderBy(static key => key, StringComparer.OrdinalIgnoreCase).ToList(),
-                        MissingEpisodeKeys = missingEpisodeKeys,
-                        MissingEpisodes = missingEpisodes,
-                        ExtraEpisodeKeys = extraEpisodeKeys,
-                        UnparseableFiles = unparseableFiles.OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).ToList(),
-                        FolderPath = item.Path
-                    });
-
-                    progress?.Report($"Indexed {item.OriginalName}");
+                    progress?.Report(new AuditProgressReport($"Scanned {item.OriginalName}"));
                 }
                 catch (Exception ex)
                 {
                     errors.Add($"{item.OriginalName}: {ex.Message}");
                 }
+            }
+
+            // ── Phase 2: catalog lookups (deterministic when provider is active) ──
+            var seriesResults = new List<SeriesAuditItem>(scanned.Count);
+
+            // Only series with parsed episodes are sent to the catalog provider.
+            var lookupCandidates = provider is not null
+                ? scanned.Where(static s => s.ParsedEpisodeKeys.Count > 0).ToList()
+                : [];
+            var total = lookupCandidates.Count;
+            var current = 0;
+
+            foreach (var s in scanned)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var catalogStatus = CatalogLookupStatus.NotRequested;
+                var catalogStatusMessage = options.CatalogProvider == CatalogProviderKind.None
+                    ? "Catalog lookup not requested."
+                    : "Catalog lookup skipped because no parsed episodes were detected.";
+                string? catalogMatchedTitle = null;
+                int? catalogMatchedYear = null;
+                var catalogEpisodeCount = 0;
+                var missingEpisodeKeys = new List<string>();
+                var missingEpisodes = new List<MissingEpisodeInfo>();
+                var extraEpisodeKeys = new List<string>();
+                string? catalogSummary = null;
+                var catalogGenres = new List<string>();
+                string? catalogNetwork = null;
+                string? catalogSeriesStatus = null;
+                double? catalogRating = null;
+                string? catalogImageUrl = null;
+
+                if (provider is not null && s.ParsedEpisodeKeys.Count > 0)
+                {
+                    current++;
+                    progress?.Report(new AuditProgressReport(
+                        $"{provider.DisplayName}: {s.OriginalName} ({current}/{total})",
+                        current, total));
+
+                    try
+                    {
+                        var catalogResult = await LookupCatalogSeriesAsync(
+                            provider, normalizer,
+                            s.NormalizedTitle, s.Year, s.ParsedEpisodeKeys,
+                            options, catalogCache, cancellationToken);
+
+                        catalogStatus = catalogResult.Status;
+                        catalogStatusMessage = catalogResult.StatusMessage;
+                        catalogMatchedTitle = catalogResult.MatchedTitle;
+                        catalogMatchedYear = catalogResult.MatchedYear;
+                        catalogEpisodeCount = catalogResult.CatalogEpisodeCount;
+                        missingEpisodeKeys = catalogResult.MissingEpisodeKeys;
+                        missingEpisodes = catalogResult.MissingEpisodes;
+                        extraEpisodeKeys = catalogResult.ExtraEpisodeKeys;
+                        catalogSummary = catalogResult.Summary;
+                        catalogGenres = catalogResult.Genres;
+                        catalogNetwork = catalogResult.Network;
+                        catalogSeriesStatus = catalogResult.SeriesStatus;
+                        catalogRating = catalogResult.Rating;
+                        catalogImageUrl = catalogResult.ImageUrl;
+                    }
+                    catch (Exception ex)
+                    {
+                        catalogStatus = CatalogLookupStatus.Error;
+                        catalogStatusMessage = ex.Message;
+                    }
+                }
+
+                seriesResults.Add(new SeriesAuditItem
+                {
+                    OriginalTitle = s.OriginalName,
+                    NormalizedTitle = s.NormalizedTitle,
+                    Year = s.Year,
+                    TotalVideoFiles = s.TotalVideoFiles,
+                    SeasonFolderCount = s.SeasonFolderCount,
+                    ParsedEpisodeCount = s.ParsedEpisodeKeys.Count,
+                    UnparseableFileCount = s.UnparseableFiles.Count,
+                    Status = s.Status,
+                    CatalogProvider = options.CatalogProvider,
+                    CatalogStatus = catalogStatus,
+                    CatalogStatusMessage = catalogStatusMessage,
+                    CatalogMatchedTitle = catalogMatchedTitle,
+                    CatalogMatchedYear = catalogMatchedYear,
+                    CatalogEpisodeCount = catalogEpisodeCount,
+                    CatalogSummary = catalogSummary,
+                    CatalogGenres = catalogGenres,
+                    CatalogNetwork = catalogNetwork,
+                    CatalogSeriesStatus = catalogSeriesStatus,
+                    CatalogRating = catalogRating,
+                    CatalogImageUrl = catalogImageUrl,
+                    MissingEpisodeCount = missingEpisodeKeys.Count,
+                    ExtraEpisodeCount = extraEpisodeKeys.Count,
+                    EpisodeKeys = s.ParsedEpisodeKeys.OrderBy(static key => key, StringComparer.OrdinalIgnoreCase).ToList(),
+                    MissingEpisodeKeys = missingEpisodeKeys,
+                    MissingEpisodes = missingEpisodes,
+                    ExtraEpisodeKeys = extraEpisodeKeys,
+                    UnparseableFiles = s.UnparseableFiles.OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).ToList(),
+                    FolderPath = s.Path
+                });
             }
 
             var orderedSeries = seriesResults
@@ -196,18 +213,30 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
         finally
         {
             if (_catalogProvider is null && provider is IDisposable disposable)
-            {
                 disposable.Dispose();
-            }
         }
     }
 
-    private ISeriesCatalogProvider? CreateProvider(SeriesAuditOptions options, IProgress<string>? progress)
+    // Intermediate data holder between Phase 1 (scan) and Phase 2 (catalog lookup).
+    private sealed record ScannedSeries(
+        string OriginalName,
+        string Path,
+        string NormalizedTitle,
+        int? Year,
+        HashSet<string> ParsedEpisodeKeys,
+        List<string> UnparseableFiles,
+        AuditSeriesStatus Status,
+        int TotalVideoFiles,
+        int SeasonFolderCount);
+
+    private ISeriesCatalogProvider? CreateProvider(SeriesAuditOptions options, IProgress<AuditProgressReport>? progress)
     {
         if (_catalogProvider is not null)
             return _catalogProvider;
 
-        Action<string>? log = progress is not null ? message => progress.Report(message) : null;
+        Action<string>? log = progress is not null
+            ? message => progress.Report(new AuditProgressReport(message))
+            : null;
 
         return options.CatalogProvider switch
         {

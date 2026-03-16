@@ -121,6 +121,17 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     [ObservableProperty]
     private bool isAuditControlsExpanded = true;
 
+    [ObservableProperty]
+    private int auditProgressValue;
+
+    [ObservableProperty]
+    private int auditProgressMax;
+
+    partial void OnAuditProgressMaxChanged(int value) =>
+        OnPropertyChanged(nameof(IsAuditProgressIndeterminate));
+
+    public bool IsAuditProgressIndeterminate => AuditProgressMax == 0;
+
     public bool HasResults => SeriesCount > 0;
 
     public string RunSummaryLine => SeriesCount == 0
@@ -272,13 +283,17 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         IsBusy = true;
         CancelInventoryCommand.NotifyCanExecuteChanged();
         StatusMessage = "Scanning local inventory...";
+        AuditProgressValue = 0;
+        AuditProgressMax = 0;
         ActivityLog.Clear();
         Errors.Clear();
 
-        var progress = new Progress<string>(message =>
+        var progress = new Progress<AuditProgressReport>(report =>
         {
-            StatusMessage = message;
-            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {message}");
+            StatusMessage = report.Message;
+            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {report.Message}");
+            AuditProgressMax = report.Total;
+            AuditProgressValue = report.Current;
         });
 
         try
