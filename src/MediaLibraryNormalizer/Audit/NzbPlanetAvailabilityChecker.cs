@@ -8,6 +8,8 @@ namespace MediaLibraryNormalizer.Audit;
 public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDisposable
 {
     private const string ApiBase = "https://api.nzbplanet.net/api";
+    // User functions (cart) use the /rss endpoint, not /api
+    private const string RssBase = "https://api.nzbplanet.net/rss";
 
     private readonly HttpClient _httpClient;
     private readonly string _apiKey;
@@ -135,13 +137,13 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
         string logUrl;
         if (!string.IsNullOrWhiteSpace(userId) && !string.IsNullOrWhiteSpace(rssKey))
         {
-            url = $"{ApiBase}?t=cartadd&id={Uri.EscapeDataString(nzbId)}&i={Uri.EscapeDataString(userId)}&r={Uri.EscapeDataString(rssKey)}";
+            url = $"{RssBase}?t=cartadd&id={Uri.EscapeDataString(nzbId)}&i={Uri.EscapeDataString(userId)}&r={Uri.EscapeDataString(rssKey)}";
             logUrl = url.Replace(rssKey, "***");
         }
         else
         {
             // Fallback: use apikey= (may not work for cart; logged so the user can investigate)
-            url = $"{ApiBase}?t=cartadd&id={Uri.EscapeDataString(nzbId)}&apikey={Uri.EscapeDataString(_apiKey)}";
+            url = $"{RssBase}?t=cartadd&id={Uri.EscapeDataString(nzbId)}&apikey={Uri.EscapeDataString(_apiKey)}";
             logUrl = url.Replace(_apiKey, "***");
             _log?.Invoke("[NZBPlanet] Warning: could not extract i=/r= from download URL; falling back to apikey= for cartadd.");
         }
