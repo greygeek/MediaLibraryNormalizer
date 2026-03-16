@@ -7,28 +7,23 @@ namespace MediaLibraryNormalizer.Audit;
 
 /// <summary>
 /// Catalog provider backed by TheTVDB v4 API.
-/// Authenticates with a free personal API key obtained from thetvdb.com → your account → API Keys.
-/// The bearer token is cached for the lifetime of this instance.
+/// Authenticates via the TVDB v4 guest-token flow (POST /login with empty apikey),
+/// which requires no personal key. The bearer token is cached for the lifetime of this instance.
 /// </summary>
 public sealed class TheTvdbSeriesCatalogProvider : ISeriesCatalogProvider, IDisposable
 {
     private const string BaseUrl = "https://api4.thetvdb.com/v4";
 
     private readonly HttpClient _httpClient;
-    private readonly string _apiKey;
     private readonly Action<string>? _log;
     private string? _bearerToken;
 
-    public TheTvdbSeriesCatalogProvider(string apiKey, Action<string>? log = null)
-        : this(new HttpClient(), apiKey, log) { }
+    public TheTvdbSeriesCatalogProvider(Action<string>? log = null)
+        : this(new HttpClient(), log) { }
 
-    public TheTvdbSeriesCatalogProvider(HttpClient httpClient, string apiKey, Action<string>? log = null)
+    public TheTvdbSeriesCatalogProvider(HttpClient httpClient, Action<string>? log = null)
     {
-        if (string.IsNullOrWhiteSpace(apiKey))
-            throw new ArgumentException("TheTVDB API key must not be empty.", nameof(apiKey));
-
         _httpClient = httpClient;
-        _apiKey = apiKey.Trim();
         _log = log;
     }
 
@@ -133,6 +128,21 @@ public sealed class TheTvdbSeriesCatalogProvider : ISeriesCatalogProvider, IDisp
         {
             _log?.Invoke($"[TheTVDB] GET {url}" + (attempt > 0 ? $" (retry {attempt})" : string.Empty));
             using var response = await _httpClient.GetAsync(url, ct);
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                // Bearer token has expired — clear it and re-authenticate, but only once.
+                if (attempt == 0)
+                {
+                    _log?.Invoke("[TheTVDB] 401 Unauthorized — re-authenticating...");
+                    _bearerToken = null;
+                    _httpClient.DefaultRequestHeaders.Authorization = null;
+                    await EnsureAuthenticatedAsync(ct);
+                    continue;
+                }
+                response.EnsureSuccessStatusCode(); // throws with clear message
+            }
+
             if (response.StatusCode != HttpStatusCode.TooManyRequests || attempt >= delaySeconds.Length)
             {
                 response.EnsureSuccessStatusCode();
@@ -149,10 +159,10 @@ public sealed class TheTvdbSeriesCatalogProvider : ISeriesCatalogProvider, IDisp
             return;
 
         var loginUrl = $"{BaseUrl}/login";
-        _log?.Invoke($"[TheTVDB] POST {loginUrl} (authenticating)");
+        _log?.Invoke($"[TheTVDB] POST {loginUrl} (guest authentication)");
 
-        // Subscriber/user keys go into `pin`; `apikey` is empty for this auth flow.
-        var loginBody = new TvdbLoginRequest(ApiKey: string.Empty, Pin: _apiKey);
+        // TVDB v4 guest-token flow: send empty apikey to obtain a public bearer token.
+        var loginBody = new TvdbLoginRequest(ApiKey: string.Empty);
         var loginResponse = await _httpClient.PostAsJsonAsync(
             loginUrl, loginBody, cancellationToken);
 
@@ -193,11 +203,9 @@ public sealed class TheTvdbSeriesCatalogProvider : ISeriesCatalogProvider, IDisp
 
     // --- JSON DTOs ---
 
-    // TVDB v4 subscriber/user API keys (the dot-separated format from thetvdb.com → Account → API Keys)
-    // must be sent as the `pin` field; `apikey` is left empty for subscriber authentication.
+    // TVDB v4 guest login — apikey is intentionally empty.
     private sealed record TvdbLoginRequest(
-        [property: JsonPropertyName("apikey")] string ApiKey,
-        [property: JsonPropertyName("pin")] string Pin);
+        [property: JsonPropertyName("apikey")] string ApiKey);
 
     private sealed class TvdbResponse<T>
     {

@@ -344,10 +344,6 @@
                                 <TextBlock Text="Catalog Provider" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                 <ComboBox MinWidth="180" ItemsSource="{Binding MissingEpisodeFinder.CatalogProviders}" SelectedItem="{Binding MissingEpisodeFinder.SelectedCatalogProvider}"/>
                             </StackPanel>
-                            <StackPanel Margin="0,0,16,8" IsVisible="{Binding MissingEpisodeFinder.IsTheTvdbSelected}">
-                                <TextBlock Text="TheTVDB API Key" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                                <TextBox MinWidth="180" Text="{Binding MissingEpisodeFinder.TheTvdbApiKey}" PasswordChar="•" Watermark="thetvdb.com → Account → API Keys"/>
-                            </StackPanel>
                             <StackPanel Margin="0,0,16,8">
                                 <TextBlock Text="NZBPlanet API Key" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                 <DockPanel LastChildFill="True">

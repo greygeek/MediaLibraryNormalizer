@@ -213,10 +213,7 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
         {
             CatalogProviderKind.None => null,
             CatalogProviderKind.TvMaze => new TvMazeSeriesCatalogProvider(new HttpClient(), log),
-            CatalogProviderKind.TheTvdb when !string.IsNullOrWhiteSpace(options.TheTvdbApiKey)
-                => new TheTvdbSeriesCatalogProvider(options.TheTvdbApiKey, log),
-            CatalogProviderKind.TheTvdb => throw new InvalidOperationException(
-                "TheTVDB catalog provider requires an API key. Get one at thetvdb.com → Account → API Keys."),
+            CatalogProviderKind.TheTvdb => new TheTvdbSeriesCatalogProvider(log),
             _ => null
         };
     }
