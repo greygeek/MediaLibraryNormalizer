@@ -314,24 +314,34 @@
                 <!-- Status bar: summary + action buttons -->
                 <Border Grid.Row="0" Padding="12,8" CornerRadius="10"
                         BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                    <DockPanel>
-                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <Button Command="{Binding MissingEpisodeFinder.RunInventoryCommand}" Content="Run Audit"/>
-                            <Button Command="{Binding MissingEpisodeFinder.CancelInventoryCommand}" Content="Cancel"
-                                    IsVisible="{Binding MissingEpisodeFinder.IsBusy}"
-                                    ToolTip.Tip="Cancel the running audit"/>
-                            <Button Command="{Binding MissingEpisodeFinder.LoadLastRunCommand}" Content="Load Last Run"
-                                    IsVisible="{Binding MissingEpisodeFinder.HasLastSavedRun}"
-                                    ToolTip.Tip="{Binding MissingEpisodeFinder.LastSavedRunDate, StringFormat='Saved: {0}'}"/>
-                            <Button Command="{Binding MissingEpisodeFinder.ClearInventoryCommand}" Content="Clear"/>
-                        </StackPanel>
-                        <StackPanel Spacing="2" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding MissingEpisodeFinder.RunSummaryLine}" FontWeight="SemiBold"/>
-                            <TextBlock FontSize="11" Opacity="0.65"
-                                       IsVisible="{Binding MissingEpisodeFinder.HasLastSavedRun}"
-                                       Text="{Binding MissingEpisodeFinder.LastSavedRunDate, StringFormat='Saved: {0}'}"/>
-                        </StackPanel>
-                    </DockPanel>
+                    <Grid RowDefinitions="Auto,Auto">
+                        <DockPanel Grid.Row="0">
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Button Command="{Binding MissingEpisodeFinder.RunInventoryCommand}" Content="Run Audit"/>
+                                <Button Command="{Binding MissingEpisodeFinder.CancelInventoryCommand}" Content="Cancel"
+                                        IsVisible="{Binding MissingEpisodeFinder.IsBusy}"
+                                        ToolTip.Tip="Cancel the running audit"/>
+                                <Button Command="{Binding MissingEpisodeFinder.LoadLastRunCommand}" Content="Load Last Run"
+                                        IsVisible="{Binding MissingEpisodeFinder.HasLastSavedRun}"
+                                        ToolTip.Tip="{Binding MissingEpisodeFinder.LastSavedRunDate, StringFormat='Saved: {0}'}"/>
+                                <Button Command="{Binding MissingEpisodeFinder.ClearInventoryCommand}" Content="Clear"/>
+                            </StackPanel>
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding MissingEpisodeFinder.RunSummaryLine}" FontWeight="SemiBold"/>
+                                <TextBlock FontSize="11" Opacity="0.65"
+                                           IsVisible="{Binding MissingEpisodeFinder.HasLastSavedRun}"
+                                           Text="{Binding MissingEpisodeFinder.LastSavedRunDate, StringFormat='Saved: {0}'}"/>
+                            </StackPanel>
+                        </DockPanel>
+                        <!-- Progress bar + status message: visible only while a run is in progress -->
+                        <Grid Grid.Row="1" RowDefinitions="Auto,Auto" Margin="0,6,0,0"
+                              IsVisible="{Binding MissingEpisodeFinder.IsBusy}">
+                            <ProgressBar Grid.Row="0" IsIndeterminate="True" Height="4" CornerRadius="2"/>
+                            <TextBlock Grid.Row="1" Margin="0,4,0,0" FontSize="11" Opacity="0.7"
+                                       Text="{Binding MissingEpisodeFinder.StatusMessage}"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </Grid>
+                    </Grid>
                 </Border>
 
                 <!-- Settings Expander: auto-collapses once a run is loaded -->
