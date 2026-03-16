@@ -7,8 +7,9 @@ namespace MediaLibraryNormalizer.Audit;
 
 /// <summary>
 /// Catalog provider backed by TheTVDB v4 API.
-/// Authenticates via the TVDB v4 guest-token flow (POST /login with empty apikey),
-/// which requires no personal key. The bearer token is cached for the lifetime of this instance.
+/// Authenticates by posting the caller's API key to POST /login and caching the returned
+/// bearer token for the lifetime of this instance. A valid API key is required — obtain one
+/// free at thetvdb.com → Account → API Keys.
 /// </summary>
 public sealed class TheTvdbSeriesCatalogProvider : ISeriesCatalogProvider, IDisposable
 {
@@ -16,14 +17,16 @@ public sealed class TheTvdbSeriesCatalogProvider : ISeriesCatalogProvider, IDisp
 
     private readonly HttpClient _httpClient;
     private readonly Action<string>? _log;
+    private readonly string _apiKey;
     private string? _bearerToken;
 
-    public TheTvdbSeriesCatalogProvider(Action<string>? log = null)
-        : this(new HttpClient(), log) { }
+    public TheTvdbSeriesCatalogProvider(string apiKey = "", Action<string>? log = null)
+        : this(new HttpClient(), apiKey, log) { }
 
-    public TheTvdbSeriesCatalogProvider(HttpClient httpClient, Action<string>? log = null)
+    public TheTvdbSeriesCatalogProvider(HttpClient httpClient, string apiKey = "", Action<string>? log = null)
     {
         _httpClient = httpClient;
+        _apiKey = apiKey;
         _log = log;
     }
 
@@ -161,8 +164,8 @@ public sealed class TheTvdbSeriesCatalogProvider : ISeriesCatalogProvider, IDisp
         var loginUrl = $"{BaseUrl}/login";
         _log?.Invoke($"[TheTVDB] POST {loginUrl} (guest authentication)");
 
-        // TVDB v4 guest-token flow: send empty apikey to obtain a public bearer token.
-        var loginBody = new TvdbLoginRequest(ApiKey: string.Empty);
+        // TVDB v4 login — a valid API key is required (obtain free at thetvdb.com → Account → API Keys).
+        var loginBody = new TvdbLoginRequest(ApiKey: _apiKey);
         var loginResponse = await _httpClient.PostAsJsonAsync(
             loginUrl, loginBody, cancellationToken);
 
@@ -203,7 +206,6 @@ public sealed class TheTvdbSeriesCatalogProvider : ISeriesCatalogProvider, IDisp
 
     // --- JSON DTOs ---
 
-    // TVDB v4 guest login — apikey is intentionally empty.
     private sealed record TvdbLoginRequest(
         [property: JsonPropertyName("apikey")] string ApiKey);
 

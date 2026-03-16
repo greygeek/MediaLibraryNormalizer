@@ -242,7 +242,7 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
         {
             CatalogProviderKind.None => null,
             CatalogProviderKind.TvMaze => new TvMazeSeriesCatalogProvider(new HttpClient(), log),
-            CatalogProviderKind.TheTvdb => new TheTvdbSeriesCatalogProvider(log),
+            CatalogProviderKind.TheTvdb => new TheTvdbSeriesCatalogProvider(options.TheTvdbApiKey ?? string.Empty, log),
             _ => null
         };
     }
