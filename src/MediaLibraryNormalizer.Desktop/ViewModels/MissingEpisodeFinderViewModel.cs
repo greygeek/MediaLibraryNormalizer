@@ -508,7 +508,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                     ParseEpisode(ep.Key));
 
                 var preferred = NzbPlanetAvailabilityChecker.SelectPreferred(results);
-                if (preferred is null || string.IsNullOrWhiteSpace(preferred.NzbId))
+                if (preferred is null || string.IsNullOrWhiteSpace(preferred.DownloadUrl))
                 {
                     notFound++;
                     ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → not found on NZBPlanet.");
@@ -516,16 +516,16 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                 }
 
                 ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → selected: {preferred.Title} (id={preferred.NzbId})");
-                var added = await checker.AddToCartAsync(preferred.NzbId!);
+                var added = await checker.AddToCartAsync(preferred.DownloadUrl);
                 if (added)
                 {
                     queued++;
-                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → added to cart: {preferred.Title}");
+                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → grabbed: {preferred.Title}");
                 }
                 else
                 {
                     notFound++;
-                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → cart add failed.");
+                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → grab failed (see response above).");
                 }
             }
 

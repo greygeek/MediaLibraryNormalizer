@@ -77,10 +77,11 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
                 var sizeStr = item.Element("enclosure")?.Attribute("length")?.Value;
                 long sizeBytes = sizeStr is not null && long.TryParse(sizeStr, out var sz) ? sz : 0L;
 
-                // <guid> is often a full URL like https://api.nzbplanet.net/api?t=get&id=12345&apikey=...
-                // Extract just the numeric id query parameter for use with t=cart.
+                // Extract the NZB id: prefer the enclosure/download URL (e.g. ?t=get&id=HASH&apikey=...)
+                // because it reliably contains the id as a query parameter.
+                // Fall back to parsing the <guid> which may be a /details/<hash> URL.
                 var guidRaw = item.Element("guid")?.Value;
-                var nzbId = ExtractIdFromGuid(guidRaw);
+                var nzbId = ExtractIdFromUrl(link) ?? ExtractIdFromUrl(guidRaw) ?? ExtractPathSegmentId(guidRaw);
 
                 return new NzbSearchResult(title, sizeBytes, postedAt, link, nzbId);
             }).ToList();
@@ -91,32 +92,47 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
         }
     }
 
-    /// <summary>
-    /// Extracts the numeric/alphanumeric id from a Newznab guid, which may be:
-    ///   - A full URL: https://api.nzbplanet.net/api?t=get&amp;id=12345&amp;apikey=...
-    ///   - A plain id string: 12345
-    /// </summary>
-    private static string? ExtractIdFromGuid(string? guid)
+    /// Extracts the `id` query parameter from a URL (e.g. ?t=get&id=HASH&apikey=...).
+    private static string? ExtractIdFromUrl(string? url)
     {
-        if (string.IsNullOrWhiteSpace(guid)) return null;
-        if (!guid.Contains('?') && !guid.Contains('/')) return guid; // already a plain id
-        if (Uri.TryCreate(guid, UriKind.Absolute, out var uri))
-        {
-            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
-            var id = query["id"];
-            if (!string.IsNullOrWhiteSpace(id)) return id;
-        }
-        return guid; // fall back to raw value
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        if (!url.Contains('?')) return null;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return null;
+        var id = System.Web.HttpUtility.ParseQueryString(uri.Query)["id"];
+        return string.IsNullOrWhiteSpace(id) ? null : id;
     }
 
-    public async Task<bool> AddToCartAsync(string nzbId, CancellationToken ct = default)
+    /// Extracts the last path segment from a URL (e.g. https://api.nzbplanet.net/details/HASH → HASH).
+    private static string? ExtractPathSegmentId(string? url)
     {
-        var url = $"{ApiBase}?t=cart&action=add&id={Uri.EscapeDataString(nzbId)}&apikey={Uri.EscapeDataString(_apiKey)}";
-        _log?.Invoke($"[NZBPlanet] AddToCart GET {url.Replace(_apiKey, "***")}");
-        using var response = await _httpClient.GetAsync(url, ct);
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        if (!url.Contains('/')) return url; // already a plain id
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return null;
+        var segment = uri.Segments.LastOrDefault()?.Trim('/');
+        return string.IsNullOrWhiteSpace(segment) ? null : segment;
+    }
+
+    public async Task<bool> AddToCartAsync(string downloadUrl, CancellationToken ct = default)
+    {
+        _log?.Invoke($"[NZBPlanet] Downloading NZB: {downloadUrl.Replace(_apiKey, "***")}");
+        using var response = await _httpClient.GetAsync(downloadUrl, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
-        _log?.Invoke($"[NZBPlanet] AddToCart response {(int)response.StatusCode}: {body}");
-        return response.IsSuccessStatusCode;
+        _log?.Invoke($"[NZBPlanet] Download response {(int)response.StatusCode} ({response.Content.Headers.ContentType}): " +
+            (body.Length > 200 ? body[..200] + " …" : body));
+        if (!response.IsSuccessStatusCode) return false;
+        // Newznab returns HTTP 200 even for API errors — check the XML body.
+        return !IsNewznabError(body);
+    }
+
+    private static bool IsNewznabError(string xmlBody)
+    {
+        try
+        {
+            var doc = XDocument.Parse(xmlBody);
+            return doc.Root?.Name.LocalName == "error" ||
+                   doc.Descendants("error").Any();
+        }
+        catch { return false; }
     }
 
     /// <summary>
