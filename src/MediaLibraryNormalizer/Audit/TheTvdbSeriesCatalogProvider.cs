@@ -7,9 +7,9 @@ namespace MediaLibraryNormalizer.Audit;
 
 /// <summary>
 /// Catalog provider backed by TheTVDB v4 API.
-/// Authenticates by posting the caller's API key to POST /login and caching the returned
-/// bearer token for the lifetime of this instance. A valid API key is required — obtain one
-/// free at thetvdb.com → Account → API Keys.
+/// Requires a v4 project API key from https://thetvdb.com/api-information.
+/// Individual/subscriber accounts must register a free project there to obtain a UUID key.
+/// The bearer token returned by POST /login is cached for the lifetime of this instance.
 /// </summary>
 public sealed class TheTvdbSeriesCatalogProvider : ISeriesCatalogProvider, IDisposable
 {
@@ -162,9 +162,10 @@ public sealed class TheTvdbSeriesCatalogProvider : ISeriesCatalogProvider, IDisp
             return;
 
         var loginUrl = $"{BaseUrl}/login";
-        _log?.Invoke($"[TheTVDB] POST {loginUrl} (guest authentication)");
+        _log?.Invoke($"[TheTVDB] POST {loginUrl}");
 
-        // TVDB v4 login — a valid API key is required (obtain free at thetvdb.com → Account → API Keys).
+        // TVDB v4 requires a project API key (UUID) from https://thetvdb.com/api-information.
+        // Individual users must register a free project there to obtain one.
         var loginBody = new TvdbLoginRequest(ApiKey: _apiKey);
         var loginResponse = await _httpClient.PostAsJsonAsync(
             loginUrl, loginBody, cancellationToken);
@@ -175,7 +176,8 @@ public sealed class TheTvdbSeriesCatalogProvider : ISeriesCatalogProvider, IDisp
             _log?.Invoke($"[TheTVDB] Login failed {(int)loginResponse.StatusCode} {loginResponse.ReasonPhrase}: {errorBody}");
             throw new HttpRequestException(
                 $"TheTVDB login failed ({(int)loginResponse.StatusCode} {loginResponse.ReasonPhrase}). " +
-                $"Check your API key at thetvdb.com → Account → API Keys. Response: {errorBody}");
+                $"A v4 project API key (UUID) is required. Register one free at https://thetvdb.com/api-information. " +
+                $"Response: {errorBody}");
         }
 
         var loginResult = await loginResponse.Content
