@@ -11,14 +11,16 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
 
     private readonly HttpClient _httpClient;
     private readonly string _apiKey;
+    private readonly Action<string>? _log;
 
-    public NzbPlanetAvailabilityChecker(string apiKey, HttpClient? httpClient = null)
+    public NzbPlanetAvailabilityChecker(string apiKey, HttpClient? httpClient = null, Action<string>? log = null)
     {
         if (string.IsNullOrWhiteSpace(apiKey))
             throw new ArgumentException("NZBPlanet API key must not be empty.", nameof(apiKey));
 
         _apiKey = apiKey.Trim();
         _httpClient = httpClient ?? new HttpClient();
+        _log = log;
     }
 
     public async Task<IReadOnlyList<NzbSearchResult>> SearchAsync(
@@ -30,10 +32,14 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
         CancellationToken ct = default)
     {
         var url = BuildUrl(seriesTitle, season, episode, tvMazeId, tvdbId);
+        _log?.Invoke($"[NZBPlanet] GET {url.Replace(_apiKey, "***")}");
         using var response = await _httpClient.GetAsync(url, ct);
         response.EnsureSuccessStatusCode();
         var xml = await response.Content.ReadAsStringAsync(ct);
-        return ParseRssItems(xml);
+        var results = ParseRssItems(xml);
+        _log?.Invoke($"[NZBPlanet] {results.Count} result(s): " +
+            string.Join(", ", results.Select(static r => $"{r.Title} ({r.SizeBytes / 1024 / 1024} MB, id={r.NzbId})")));
+        return results;
     }
 
     private string BuildUrl(string title, int season, int episode, string? tvMazeId, string? tvdbId)
@@ -70,8 +76,13 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
                     ? dt : DateTimeOffset.MinValue;
                 var sizeStr = item.Element("enclosure")?.Attribute("length")?.Value;
                 long sizeBytes = sizeStr is not null && long.TryParse(sizeStr, out var sz) ? sz : 0L;
-                var guid = item.Element("guid")?.Value;
-                return new NzbSearchResult(title, sizeBytes, postedAt, link, guid);
+
+                // <guid> is often a full URL like https://api.nzbplanet.net/api?t=get&id=12345&apikey=...
+                // Extract just the numeric id query parameter for use with t=cart.
+                var guidRaw = item.Element("guid")?.Value;
+                var nzbId = ExtractIdFromGuid(guidRaw);
+
+                return new NzbSearchResult(title, sizeBytes, postedAt, link, nzbId);
             }).ToList();
         }
         catch
@@ -80,10 +91,31 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
         }
     }
 
+    /// <summary>
+    /// Extracts the numeric/alphanumeric id from a Newznab guid, which may be:
+    ///   - A full URL: https://api.nzbplanet.net/api?t=get&amp;id=12345&amp;apikey=...
+    ///   - A plain id string: 12345
+    /// </summary>
+    private static string? ExtractIdFromGuid(string? guid)
+    {
+        if (string.IsNullOrWhiteSpace(guid)) return null;
+        if (!guid.Contains('?') && !guid.Contains('/')) return guid; // already a plain id
+        if (Uri.TryCreate(guid, UriKind.Absolute, out var uri))
+        {
+            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+            var id = query["id"];
+            if (!string.IsNullOrWhiteSpace(id)) return id;
+        }
+        return guid; // fall back to raw value
+    }
+
     public async Task<bool> AddToCartAsync(string nzbId, CancellationToken ct = default)
     {
         var url = $"{ApiBase}?t=cart&action=add&id={Uri.EscapeDataString(nzbId)}&apikey={Uri.EscapeDataString(_apiKey)}";
+        _log?.Invoke($"[NZBPlanet] AddToCart GET {url.Replace(_apiKey, "***")}");
         using var response = await _httpClient.GetAsync(url, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        _log?.Invoke($"[NZBPlanet] AddToCart response {(int)response.StatusCode}: {body}");
         return response.IsSuccessStatusCode;
     }
 

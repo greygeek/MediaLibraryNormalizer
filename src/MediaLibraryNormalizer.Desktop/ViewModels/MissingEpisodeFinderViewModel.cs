@@ -457,7 +457,8 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
         try
         {
-            using var checker = new NzbPlanetAvailabilityChecker(NzbApiKey.Trim());
+            using var checker = new NzbPlanetAvailabilityChecker(NzbApiKey.Trim(),
+                log: msg => ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {msg}"));
             foreach (var ep in SelectedSeries.Item.MissingEpisodes)
             {
                 var results = await checker.SearchAsync(
@@ -497,7 +498,8 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
         try
         {
-            using var checker = new NzbPlanetAvailabilityChecker(NzbApiKey.Trim());
+            using var checker = new NzbPlanetAvailabilityChecker(NzbApiKey.Trim(),
+                log: msg => ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {msg}"));
             foreach (var ep in series.Item.MissingEpisodes)
             {
                 var results = await checker.SearchAsync(
@@ -513,6 +515,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                     continue;
                 }
 
+                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → selected: {preferred.Title} (id={preferred.NzbId})");
                 var added = await checker.AddToCartAsync(preferred.NzbId!);
                 if (added)
                 {
@@ -605,17 +608,17 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                     Errors = _lastRunResult.Errors,
                     Summary = new SeriesAuditSummary
                     {
-                        SeriesScanned          = prunedSeries.Count,
-                        ReadySeries            = prunedSeries.Count(s => s.Status == AuditSeriesStatus.ReadyForCatalogLookup),
-                        PartialSeries          = prunedSeries.Count(s => s.Status == AuditSeriesStatus.PartialInventory),
-                        NoParsedEpisodeSeries  = prunedSeries.Count(s => s.Status == AuditSeriesStatus.NoParsedEpisodes),
-                        ParsedEpisodeCount     = prunedSeries.Sum(s => s.ParsedEpisodeCount),
-                        UnparseableFileCount   = prunedSeries.Sum(s => s.UnparseableFileCount),
-                        CatalogMatchedSeries   = prunedSeries.Count(s => s.CatalogStatus == CatalogLookupStatus.Matched),
+                        SeriesScanned = prunedSeries.Count,
+                        ReadySeries = prunedSeries.Count(s => s.Status == AuditSeriesStatus.ReadyForCatalogLookup),
+                        PartialSeries = prunedSeries.Count(s => s.Status == AuditSeriesStatus.PartialInventory),
+                        NoParsedEpisodeSeries = prunedSeries.Count(s => s.Status == AuditSeriesStatus.NoParsedEpisodes),
+                        ParsedEpisodeCount = prunedSeries.Sum(s => s.ParsedEpisodeCount),
+                        UnparseableFileCount = prunedSeries.Sum(s => s.UnparseableFileCount),
+                        CatalogMatchedSeries = prunedSeries.Count(s => s.CatalogStatus == CatalogLookupStatus.Matched),
                         CatalogAmbiguousSeries = prunedSeries.Count(s => s.CatalogStatus == CatalogLookupStatus.Ambiguous),
-                        CatalogErrorSeries     = prunedSeries.Count(s => s.CatalogStatus == CatalogLookupStatus.Error),
+                        CatalogErrorSeries = prunedSeries.Count(s => s.CatalogStatus == CatalogLookupStatus.Error),
                         SeriesWithMissingEpisodes = prunedSeries.Count(s => s.MissingEpisodeCount > 0),
-                        MissingEpisodeCount    = prunedSeries.Sum(s => s.MissingEpisodeCount),
+                        MissingEpisodeCount = prunedSeries.Sum(s => s.MissingEpisodeCount),
                     }
                 };
                 _lastRunResult = pruned;
