@@ -332,7 +332,7 @@ public partial class MainWindowViewModel : ViewModelBase
         !IsBusy
         && !string.IsNullOrWhiteSpace(LibraryPath)
         && _hasFreshPreview
-        && (!RequiresApprovalForMerge || ApprovedDuplicateGroupCount > 0);
+        && (OperationCount > 0 || !RequiresApprovalForMerge || ApprovedDuplicateGroupCount > 0);
 
     private bool RequiresApprovalForMerge => DuplicateGroups.Any(group => group.CanStage);
 
