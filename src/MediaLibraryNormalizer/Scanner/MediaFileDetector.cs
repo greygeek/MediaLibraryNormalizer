@@ -3,7 +3,7 @@ namespace MediaLibraryNormalizer.Scanner;
 /// <summary>
 /// Detects video and associated media files by extension and naming patterns.
 /// </summary>
-public class MediaFileDetector : IMediaFileDetector
+public partial class MediaFileDetector : IMediaFileDetector
 {
     private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -24,8 +24,6 @@ public class MediaFileDetector : IMediaFileDetector
     {
         ".srt", ".ssa", ".ass", ".sub", ".idx", ".nfo", ".txt", ".jpg", ".jpeg", ".png"
     };
-
-    private static readonly string[] SamplePatterns = [".sample.", "-sample", "sample-"];
 
     public bool IsVideoFile(string filePath)
     {
@@ -51,11 +49,17 @@ public class MediaFileDetector : IMediaFileDetector
         return MovieArtifactExtensions.Contains(ext);
     }
 
+    // "sample" must be preceded by a dot or start-of-string, and followed by a dot, dash,
+    // underscore, or end-of-string.  This prevents release group names like "qpel-sample"
+    // (where sample is joined to the group token by a dash) from triggering false positives.
+    [System.Text.RegularExpressions.GeneratedRegex(@"(^|\.)sample($|[._-])",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex SampleIndicatorRegex();
+
     public bool IsSampleFile(string filePath)
     {
-        var fileName = Path.GetFileName(filePath);
-        return SamplePatterns.Any(p =>
-            fileName.Contains(p, StringComparison.OrdinalIgnoreCase));
+        var stem = Path.GetFileNameWithoutExtension(filePath);
+        return SampleIndicatorRegex().IsMatch(stem);
     }
 
     public bool IsSampleVideoFile(string filePath) =>

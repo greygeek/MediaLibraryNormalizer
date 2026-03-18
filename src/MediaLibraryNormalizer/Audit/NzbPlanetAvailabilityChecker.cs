@@ -117,16 +117,42 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
         return string.IsNullOrWhiteSpace(segment) ? null : segment;
     }
 
-    public async Task<bool> DownloadNzbAsync(string downloadUrl, string destPath, CancellationToken ct = default)
+    public async Task<bool> DownloadNzbAsync(string downloadUrl, string destPath, string? category = null, CancellationToken ct = default)
     {
         _log?.Invoke($"[NZBPlanet] Downloading NZB → {Path.GetFileName(destPath)}");
         using var response = await _httpClient.GetAsync(downloadUrl, ct);
         response.EnsureSuccessStatusCode();
-        var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+        var xml = await response.Content.ReadAsStringAsync(ct);
+        if (!string.IsNullOrWhiteSpace(category))
+            xml = InjectCategory(xml, category.Trim());
         Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
-        await File.WriteAllBytesAsync(destPath, bytes, ct);
-        _log?.Invoke($"[NZBPlanet] Saved {bytes.Length / 1024} KB → {destPath}");
+        await File.WriteAllTextAsync(destPath, xml, System.Text.Encoding.UTF8, ct);
+        _log?.Invoke($"[NZBPlanet] Saved → {destPath}" + (!string.IsNullOrWhiteSpace(category) ? $" (category={category})" : ""));
         return true;
+    }
+
+    private static string InjectCategory(string nzbXml, string category)
+    {
+        try
+        {
+            var doc = XDocument.Parse(nzbXml);
+            XNamespace ns = "http://www.newzbin.com/DTD/2003/nzb";
+            var head = doc.Root?.Element(ns + "head") ?? doc.Root?.Element("head");
+            if (head is null)
+            {
+                head = new XElement(ns + "head");
+                doc.Root?.AddFirst(head);
+            }
+            // Remove any existing category meta, then add ours.
+            head.Elements(ns + "meta").Concat(head.Elements("meta"))
+                .Where(e => e.Attribute("type")?.Value == "category")
+                .ToList().ForEach(e => e.Remove());
+            head.Add(new XElement(ns + "meta", new XAttribute("type", "category"), category));
+            return doc.Declaration is not null
+                ? doc.Declaration + "\n" + doc.ToString()
+                : doc.ToString();
+        }
+        catch { return nzbXml; } // if XML parse fails, return original unchanged
     }
 
     /// <summary>

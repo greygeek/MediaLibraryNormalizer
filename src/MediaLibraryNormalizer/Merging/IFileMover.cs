@@ -21,4 +21,9 @@ public interface IFileMover
         string filePath,
         bool dryRun,
         OperationType operationType = OperationType.DeleteSample);
+
+    /// <summary>
+    /// Rename a file in-place (same directory) and also rename any associated sidecar files.
+    /// </summary>
+    Task<List<MergeOperation>> RenameInPlaceAsync(string source, string destination, bool dryRun);
 }

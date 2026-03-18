@@ -68,6 +68,40 @@ public class FileMover(
         return operations;
     }
 
+    public async Task<List<MergeOperation>> RenameInPlaceAsync(string source, string destination, bool dryRun)
+    {
+        var operations = new List<MergeOperation>();
+
+        var renameOp = new MergeOperation(source, destination, OperationType.Rename, dryRun);
+        operations.Add(renameOp);
+
+        if (!dryRun)
+        {
+            File.Move(source, destination);
+            await transactionLog.LogAsync(renameOp);
+        }
+
+        // Rename associated sidecar files (subtitles, nfo, etc.) with the new base name.
+        var dir = Path.GetDirectoryName(source)!;
+        var newBaseName = Path.GetFileNameWithoutExtension(destination);
+        foreach (var assocFile in fileDetector.FindAssociatedFiles(source))
+        {
+            var assocDest = Path.Combine(dir, newBaseName + Path.GetExtension(assocFile));
+            if (File.Exists(assocDest)) continue;
+
+            var assocOp = new MergeOperation(assocFile, assocDest, OperationType.Rename, dryRun);
+            operations.Add(assocOp);
+
+            if (!dryRun)
+            {
+                File.Move(assocFile, assocDest);
+                await transactionLog.LogAsync(assocOp);
+            }
+        }
+
+        return operations;
+    }
+
     public async Task<List<MergeOperation>> DeleteFileAsync(
         string filePath,
         bool dryRun,

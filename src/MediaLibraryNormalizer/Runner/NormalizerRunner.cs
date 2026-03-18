@@ -125,6 +125,35 @@ public class NormalizerRunner : INormalizerRunner
         var topLevelMovieDedupeOperations = await merger.DeduplicateTopLevelMovieFilesAsync(config.LibraryPath, config.DryRun);
         allOperations.AddRange(topLevelMovieDedupeOperations);
 
+        if (config.FlattenEpisodeReleaseFolders)
+        {
+            progress?.Report("Flattening episode release folders...");
+            cancellationToken.ThrowIfCancellationRequested();
+            var episodeFlattenOps = await merger.FlattenEpisodeReleaseFoldersAsync(items, config.LibraryPath, config.DryRun);
+            allOperations.AddRange(episodeFlattenOps);
+        }
+
+        if (config.RenameNonStandardFiles)
+        {
+            progress?.Report("Renaming non-standard episode filenames...");
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (var item in items.Where(static i => i.Kind == MediaKind.TvSeries))
+            {
+                foreach (var videoFile in item.VideoFiles)
+                {
+                    var newPath = episodeParser.TryNormalizeFilename(videoFile);
+                    if (newPath is not null)
+                    {
+                        logger.LogInformation("{Action} non-standard filename: {File} \u2192 {New}",
+                            config.DryRun ? "Would rename" : "Renaming",
+                            Path.GetFileName(videoFile),
+                            Path.GetFileName(newPath));
+                        allOperations.AddRange(await fileMover.RenameInPlaceAsync(videoFile, newPath, config.DryRun));
+                    }
+                }
+            }
+        }
+
         if (config.DeleteSamples)
         {
             progress?.Report("Deleting sample files...");
@@ -275,6 +304,8 @@ public class NormalizerRunner : INormalizerRunner
             MaxConcurrency = config.MaxConcurrency,
             DeleteSamples = config.DeleteSamples,
             DeleteNonEpisodeFiles = config.DeleteNonEpisodeFiles,
+            RenameNonStandardFiles = config.RenameNonStandardFiles,
+            FlattenEpisodeReleaseFolders = config.FlattenEpisodeReleaseFolders,
             DryRun = config.DryRun,
             Merge = config.Merge,
             ExactMatchesWithFilesOnly = config.ExactMatchesWithFilesOnly,

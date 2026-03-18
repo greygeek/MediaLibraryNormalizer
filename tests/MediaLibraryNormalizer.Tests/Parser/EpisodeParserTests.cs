@@ -22,6 +22,71 @@ public class EpisodeParserTests
         Assert.Equal(expectedEpisodes.ToList(), result.Episodes);
     }
 
+    // === SE##E## variant (extra E after S) ===
+
+    [Theory]
+    [InlineData("SE10E08.avi", 10, new[] { 8 })]
+    [InlineData("SE10E09.avi", 10, new[] { 9 })]
+    [InlineData("Grand Designs SE01E01.mkv", 1, new[] { 1 })]
+    public void Parse_SeVariantFormat_ReturnsCorrectSeasonAndEpisode(
+        string fileName, int expectedSeason, int[] expectedEpisodes)
+    {
+        var result = _sut.Parse(fileName);
+
+        Assert.NotNull(result);
+        Assert.Equal(expectedSeason, result.Season);
+        Assert.Equal(expectedEpisodes.ToList(), result.Episodes);
+    }
+
+    // === NofM format: "04of10" with season from folder path ===
+
+    [Theory]
+    [InlineData(@"F:\TV\Grand Designs\Season 14\04of10.The.Shipping.Containers.House.mp4", 14, new[] { 4 })]
+    [InlineData(@"F:\TV\Grand Designs\Season 14\05of10.The.Urban.Shed.mp4", 14, new[] { 5 })]
+    [InlineData(@"F:\TV\Some Show\Season 2\3of8.Episode.Title.mkv", 2, new[] { 3 })]
+    public void Parse_NofMFormat_UsesFolderForSeason(
+        string filePath, int expectedSeason, int[] expectedEpisodes)
+    {
+        var result = _sut.Parse(filePath);
+
+        Assert.NotNull(result);
+        Assert.Equal(expectedSeason, result.Season);
+        Assert.Equal(expectedEpisodes.ToList(), result.Episodes);
+    }
+
+    [Fact]
+    public void Parse_NofMFormat_NoSeasonFolder_ReturnsNull()
+    {
+        // Without a "Season N" parent folder, NofM files cannot be resolved
+        var result = _sut.Parse(@"F:\TV\04of10.Some.Title.mp4");
+        Assert.Null(result);
+    }
+
+    // === TryNormalizeFilename ===
+
+    [Theory]
+    [InlineData(@"F:\TV\Grand Designs\Season 10\SE10E08.avi", "S10E08.avi")]
+    [InlineData(@"F:\TV\Grand Designs\Season 14\04of10.The.Shipping.Containers.House.mp4", "S14E04.The.Shipping.Containers.House.mp4")]
+    [InlineData(@"F:\TV\Grand Designs\Season 14\05of10.The.Urban.Shed.mp4", "S14E05.The.Urban.Shed.mp4")]
+    [InlineData(@"F:\TV\Some Show\Season 3\3x05.Episode.Title.mkv", "S03E05.Episode.Title.mkv")]
+    public void TryNormalizeFilename_NonStandard_ReturnsStandardisedPath(
+        string filePath, string expectedFileName)
+    {
+        var result = _sut.TryNormalizeFilename(filePath);
+
+        Assert.NotNull(result);
+        Assert.Equal(expectedFileName, Path.GetFileName(result));
+    }
+
+    [Theory]
+    [InlineData(@"F:\TV\Some Show\Season 1\S01E01.mkv")]
+    [InlineData(@"F:\TV\Some Show\Season 1\Show.Name.S03E15.HDTV.mkv")]
+    public void TryNormalizeFilename_AlreadyStandard_ReturnsNull(string filePath)
+    {
+        var result = _sut.TryNormalizeFilename(filePath);
+        Assert.Null(result);
+    }
+
     // === Multi-episode: S01E01E02 ===
 
     [Theory]
@@ -163,12 +228,25 @@ public class EpisodeParserTests
         Assert.Null(result);
     }
 
-    [Fact]
-    public void Parse_NullInput_ReturnsNull()
+    // === Hash-named file — episode info in parent folder ===
+
+    [Theory]
+    [InlineData(@"F:\TV\New.Amsterdam.2018\New.Amsterdam.2018.S03E05.Blood.Sweat.and.Tears.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb\d7e49f4c436844a290989dacbd988211.mkv", 3, new[] { 5 })]
+    [InlineData(@"F:\TV\New.Amsterdam.2018\New.Amsterdam.2018.S03E05.Blood.Sweat.and.Tears.720p.AMZN.WEB-DL.DDP5.1.H.264-NTb\60af8a21f9c64ac587f74ab56ee6d072.mkv", 3, new[] { 5 })]
+    public void Parse_HashNamedFile_FallsBackToParentFolder(
+        string filePath, int expectedSeason, int[] expectedEpisodes)
     {
-        // Path.GetFileNameWithoutExtension handles null by returning null
-        // which will be empty/whitespace
-        var result = _sut.Parse("");
+        var result = _sut.Parse(filePath);
+
+        Assert.NotNull(result);
+        Assert.Equal(expectedSeason, result.Season);
+        Assert.Equal(expectedEpisodes.ToList(), result.Episodes);
+    }
+
+    [Fact]
+    public void Parse_HashNamedFile_NoEpisodeFolderInfo_ReturnsNull()
+    {
+        var result = _sut.Parse(@"F:\TV\New.Amsterdam.2018\d7e49f4c436844a290989dacbd988211.mkv");
         Assert.Null(result);
     }
 }

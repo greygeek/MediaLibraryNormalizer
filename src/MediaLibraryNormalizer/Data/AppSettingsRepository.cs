@@ -15,6 +15,7 @@ public sealed class AppSettingsRepository(AppDbContextFactory factory) : IAppSet
             TheTvdbApiKey             = rows.GetValueOrDefault("TheTvdbApiKey", string.Empty),
             NzbApiKey                 = rows.GetValueOrDefault("NzbApiKey", string.Empty),
             NzbWatchFolder            = rows.GetValueOrDefault("NzbWatchFolder", string.Empty),
+            NzbCategory               = rows.GetValueOrDefault("NzbCategory", string.Empty),
             CatalogProvider           = rows.GetValueOrDefault("CatalogProvider", "None"),
             IncludeSpecials           = rows.GetValueOrDefault("IncludeSpecials", "false") == "true",
             Verbose                   = rows.GetValueOrDefault("Verbose", "false") == "true",
@@ -24,6 +25,8 @@ public sealed class AppSettingsRepository(AppDbContextFactory factory) : IAppSet
             UseHash                   = rows.GetValueOrDefault("UseHash", "false") == "true",
             DeleteSamples             = rows.GetValueOrDefault("DeleteSamples", "false") == "true",
             DeleteNonEpisodeFiles     = rows.GetValueOrDefault("DeleteNonEpisodeFiles", "false") == "true",
+            RenameNonStandardFiles    = rows.GetValueOrDefault("RenameNonStandardFiles", "false") == "true",
+            FlattenEpisodeReleaseFolders = rows.GetValueOrDefault("FlattenEpisodeReleaseFolders", "false") == "true",
         };
     }
 
@@ -37,6 +40,7 @@ public sealed class AppSettingsRepository(AppDbContextFactory factory) : IAppSet
             ["TheTvdbApiKey"]             = settings.TheTvdbApiKey,
             ["NzbApiKey"]                 = settings.NzbApiKey,
             ["NzbWatchFolder"]            = settings.NzbWatchFolder,
+            ["NzbCategory"]              = settings.NzbCategory,
             ["CatalogProvider"]           = settings.CatalogProvider,
             ["IncludeSpecials"]           = settings.IncludeSpecials ? "true" : "false",
             ["Verbose"]                   = settings.Verbose ? "true" : "false",
@@ -46,6 +50,8 @@ public sealed class AppSettingsRepository(AppDbContextFactory factory) : IAppSet
             ["UseHash"]                   = settings.UseHash ? "true" : "false",
             ["DeleteSamples"]             = settings.DeleteSamples ? "true" : "false",
             ["DeleteNonEpisodeFiles"]     = settings.DeleteNonEpisodeFiles ? "true" : "false",
+            ["RenameNonStandardFiles"]    = settings.RenameNonStandardFiles ? "true" : "false",
+            ["FlattenEpisodeReleaseFolders"] = settings.FlattenEpisodeReleaseFolders ? "true" : "false",
         };
 
         var existingKeys = await db.Settings

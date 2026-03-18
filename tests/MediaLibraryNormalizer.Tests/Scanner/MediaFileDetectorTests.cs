@@ -43,9 +43,9 @@ public class MediaFileDetectorTests
     // === Sample file detection ===
 
     [Theory]
-    [InlineData("show.sample.mkv", true)]
-    [InlineData("show-sample.mkv", true)]
-    [InlineData("sample-show.mkv", true)]
+    [InlineData("show.sample.mkv", true)]            // .sample. between dots
+    [InlineData("show.sample.720p.mkv", true)]       // .sample. in the middle
+    [InlineData("sample.show.mkv", true)]            // sample. at the start
     public void IsSampleFile_SamplePatterns_DetectedCorrectly(string fileName, bool expected)
     {
         Assert.Equal(expected, _sut.IsSampleFile(fileName));
@@ -54,6 +54,8 @@ public class MediaFileDetectorTests
     [Theory]
     [InlineData("show.mkv")]
     [InlineData("The.Sampler.S01E01.mkv")]
+    [InlineData("grand.designs.s18e03.720p.hdtv.x264-qpel-sample.mkv")] // release group named "qpel-sample"
+    [InlineData("show.S01E01.HDTV.x264-GROUP-sample.mkv")]               // group suffix after dash — not a sample
     public void IsSampleFile_NormalFiles_ReturnsFalse(string fileName)
     {
         Assert.False(_sut.IsSampleFile(fileName));

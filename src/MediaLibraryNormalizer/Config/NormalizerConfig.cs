@@ -26,6 +26,12 @@ public class NormalizerConfig
     /// <summary>Whether to delete video files inside TV series folders that cannot be parsed as episodes.</summary>
     public bool DeleteNonEpisodeFiles { get; set; }
 
+    /// <summary>Whether to rename non-standard episode filenames (e.g. SE10E08, 04of10) to standard S##E## format.</summary>
+    public bool RenameNonStandardFiles { get; set; }
+
+    /// <summary>Whether to flatten per-episode release folders at library root into {Show}/Season {N}/ structure.</summary>
+    public bool FlattenEpisodeReleaseFolders { get; set; }
+
     // --- CLI flags ---
 
     /// <summary>Preview mode — no filesystem changes (default true).</summary>
@@ -79,4 +85,7 @@ public class NormalizerConfig
 
     /// <summary>Folder watched by SABnzbd (or similar); NZB files are dropped here automatically.</summary>
     public string? NzbWatchFolder { get; set; }
+
+    /// <summary>SABnzbd category injected into the NZB XML (optional, e.g. "TV").</summary>
+    public string? NzbCategory { get; set; }
 }

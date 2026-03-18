@@ -11,12 +11,12 @@ public partial class EpisodeParser : IEpisodeParser
 {
     // Pattern priority order matters — try most specific first
 
-    // S01E01E02 or S01E01-E03 or S01E01-S01E03 (multi-episode)
-    [GeneratedRegex(@"S(\d{1,2})E(\d{1,4})(?:[\-]?E(\d{1,4}))*", RegexOptions.IgnoreCase)]
+    // S01E01E02 or S01E01-E03 or S01E01-S01E03 (multi-episode); also handles SE01E01 variant
+    [GeneratedRegex(@"SE?(\d{1,2})E(\d{1,4})(?:[\-]?E(\d{1,4}))*", RegexOptions.IgnoreCase)]
     private static partial Regex MultiEpisodeRegex();
 
-    // S01E01-S01E03 cross-season range (rare but supported)
-    [GeneratedRegex(@"S(\d{1,2})E(\d{1,4})\-S\d{1,2}E(\d{1,4})", RegexOptions.IgnoreCase)]
+    // S01E01-S01E03 cross-season range (rare but supported); also handles SE01E01 variant
+    [GeneratedRegex(@"SE?(\d{1,2})E(\d{1,4})\-SE?\d{1,2}E(\d{1,4})", RegexOptions.IgnoreCase)]
     private static partial Regex CrossSeasonRangeRegex();
 
     // 1x01 format
@@ -40,6 +40,18 @@ public partial class EpisodeParser : IEpisodeParser
     [GeneratedRegex(@"\b((19|20)\d{2})\b")]
     private static partial Regex YearRegex();
 
+    // NofM format: "04of10" — episode N of M total (season comes from parent folder)
+    [GeneratedRegex(@"\b(\d{1,2})of\d{1,2}\b", RegexOptions.IgnoreCase)]
+    private static partial Regex NofMRegex();
+
+    // Extracts season number from a parent folder name such as "Season 14"
+    [GeneratedRegex(@"Season\s*(\d+)", RegexOptions.IgnoreCase)]
+    private static partial Regex SeasonFolderRegex();
+
+    // Detects filenames that already contain a standard S##E## token
+    [GeneratedRegex(@"S\d{1,2}E\d{1,4}", RegexOptions.IgnoreCase)]
+    private static partial Regex StandardFormatRegex();
+
     public EpisodeInfo? Parse(string filePath)
     {
         var fileName = Path.GetFileNameWithoutExtension(filePath);
@@ -47,7 +59,27 @@ public partial class EpisodeParser : IEpisodeParser
             return null;
 
         var (season, episodes) = ParseSeasonEpisode(fileName);
-        if (season < 0)
+        if (season < 0 && episodes.Count > 0)
+            season = ExtractSeasonFromPath(filePath);
+
+        // Fallback: if the filename itself carries no episode info (e.g. a hash-named file),
+        // try parsing the immediate parent folder name (e.g. New.Amsterdam.2018.S03E05.…).
+        if (season < 0 || episodes.Count == 0)
+        {
+            var parentFolder = Path.GetFileName(Path.GetDirectoryName(filePath));
+            if (!string.IsNullOrWhiteSpace(parentFolder))
+            {
+                var (folderSeason, folderEpisodes) = ParseSeasonEpisode(parentFolder);
+                if (folderSeason >= 0 && folderEpisodes.Count > 0)
+                {
+                    season = folderSeason;
+                    episodes = folderEpisodes;
+                    fileName = parentFolder; // use folder name for metadata extraction below
+                }
+            }
+        }
+
+        if (season < 0 || episodes.Count == 0)
             return null;
 
         var info = new EpisodeInfo
@@ -139,6 +171,13 @@ public partial class EpisodeParser : IEpisodeParser
                     [int.Parse(verboseMatch.Groups[2].Value)]);
         }
 
+        // Try NofM: "04of10" — episode-only; season is resolved from the folder path in Parse()
+        var nofMMatch = NofMRegex().Match(fileName);
+        if (nofMMatch.Success)
+        {
+            return (-1, [int.Parse(nofMMatch.Groups[1].Value)]);
+        }
+
         return (-1, []);
     }
 
@@ -198,5 +237,57 @@ public partial class EpisodeParser : IEpisodeParser
             return year;
         }
         return null;
+    }
+
+    /// <summary>
+    /// Returns the new absolute file path if the filename should be renamed to standard
+    /// <c>S##E##</c> format, or <see langword="null"/> if it already is standard.
+    /// </summary>
+    public string? TryNormalizeFilename(string filePath)
+    {
+        var fileName = Path.GetFileNameWithoutExtension(filePath);
+        if (IsStandardFormat(fileName)) return null;
+
+        var info = Parse(filePath);
+        if (info is null) return null;
+
+        var newName = BuildStandardName(fileName, info);
+        if (string.Equals(newName, fileName, StringComparison.OrdinalIgnoreCase)) return null;
+
+        return Path.Combine(Path.GetDirectoryName(filePath)!, newName + Path.GetExtension(filePath));
+    }
+
+    private static bool IsStandardFormat(string fileName) =>
+        StandardFormatRegex().IsMatch(fileName);
+
+    private string BuildStandardName(string fileName, EpisodeInfo info)
+    {
+        var epTag = $"S{info.Season:D2}E{string.Join("E", info.Episodes.Select(e => e.ToString("D2")))}";
+
+        foreach (var regex in new Regex[] { CrossSeasonRangeRegex(), MultiEpisodeRegex(), AltFormatRegex(), VerboseFormatRegex(), NofMRegex() })
+        {
+            var m = regex.Match(fileName);
+            if (m.Success)
+                return fileName[..m.Index] + epTag + fileName[(m.Index + m.Length)..];
+        }
+
+        return epTag;
+    }
+
+    private static int ExtractSeasonFromPath(string filePath)
+    {
+        var dir = Path.GetDirectoryName(filePath);
+        while (!string.IsNullOrEmpty(dir))
+        {
+            var folderName = Path.GetFileName(dir);
+            if (folderName is not null)
+            {
+                var m = SeasonFolderRegex().Match(folderName);
+                if (m.Success && int.TryParse(m.Groups[1].Value, out var s))
+                    return s;
+            }
+            dir = Path.GetDirectoryName(dir);
+        }
+        return -1;
     }
 }

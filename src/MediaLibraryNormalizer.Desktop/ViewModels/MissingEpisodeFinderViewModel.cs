@@ -92,6 +92,9 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     [ObservableProperty]
     private string nzbWatchFolder = string.Empty;
 
+    [ObservableProperty]
+    private string nzbCategory = string.Empty;
+
     public bool IsTheTvdbSelected => SelectedCatalogProvider == CatalogProviderKind.TheTvdb;
 
     public bool IsNzbConfigured => !string.IsNullOrWhiteSpace(NzbApiKey) && !string.IsNullOrWhiteSpace(NzbWatchFolder);
@@ -242,6 +245,11 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsNzbConfigured));
         OnPropertyChanged(nameof(QueueMissingDownloadsToolTip));
         QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnNzbCategoryChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsNzbConfigured));
     }
 
     partial void OnLibraryPathChanged(string value)
@@ -528,7 +536,8 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                 var filename = SanitizeFilename(preferred.Title) + ".nzb";
                 var destPath = Path.Combine(NzbWatchFolder.Trim(), filename);
                 ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → selected: {preferred.Title}");
-                var saved = await checker.DownloadNzbAsync(preferred.DownloadUrl, destPath);
+                var saved = await checker.DownloadNzbAsync(preferred.DownloadUrl, destPath,
+                    string.IsNullOrWhiteSpace(NzbCategory) ? null : NzbCategory.Trim());
                 if (saved)
                 {
                     queued++;

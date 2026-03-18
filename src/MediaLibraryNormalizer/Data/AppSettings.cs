@@ -16,6 +16,8 @@ public class AppSettings
 
     public string NzbWatchFolder { get; set; } = string.Empty;
 
+    public string NzbCategory { get; set; } = string.Empty;
+
     public string CatalogProvider { get; set; } = "None";
 
     public bool IncludeSpecials { get; set; }
@@ -37,4 +39,8 @@ public class AppSettings
     public bool DeleteSamples { get; set; }
 
     public bool DeleteNonEpisodeFiles { get; set; }
+
+    public bool RenameNonStandardFiles { get; set; }
+
+    public bool FlattenEpisodeReleaseFolders { get; set; }
 }

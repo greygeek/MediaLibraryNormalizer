@@ -20,5 +20,5 @@ public interface INzbAvailabilityChecker
     /// SABnzbd (or similar) should be configured to watch the parent folder.
     /// Returns <see langword="true"/> when the file was written successfully.
     /// </summary>
-    Task<bool> DownloadNzbAsync(string downloadUrl, string destPath, CancellationToken ct = default);
+    Task<bool> DownloadNzbAsync(string downloadUrl, string destPath, string? category = null, CancellationToken ct = default);
 }

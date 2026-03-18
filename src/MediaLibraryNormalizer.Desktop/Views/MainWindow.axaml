@@ -111,6 +111,8 @@
                         <CheckBox Content="Verbose logging" IsChecked="{Binding Verbose}" Margin="0,0,16,8"/>
                         <CheckBox Content="Delete sample files" IsChecked="{Binding DeleteSamples}" Margin="0,0,16,8"/>
                         <CheckBox Content="Delete unparsed files" IsChecked="{Binding DeleteNonEpisodeFiles}" Margin="0,0,16,8"/>
+                        <CheckBox Content="Rename non-standard filenames" IsChecked="{Binding RenameNonStandardFiles}" Margin="0,0,16,8"/>
+                        <CheckBox Content="Flatten episode release folders" IsChecked="{Binding FlattenEpisodeReleaseFolders}" Margin="0,0,16,8"/>
                     </WrapPanel>
 
                     <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Margin="0,12,0,0" Text="{Binding LastRunSummary}" Opacity="0.75"/>
@@ -379,6 +381,10 @@
                             <StackPanel Margin="0,0,16,8">
                                 <TextBlock Text="SABnzbd Watch Folder" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                 <TextBox Text="{Binding MissingEpisodeFinder.NzbWatchFolder}" Watermark="e.g. F:\NZB\Watch"/>
+                            </StackPanel>
+                            <StackPanel Margin="0,0,16,8">
+                                <TextBlock Text="SABnzbd Category" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                <TextBox Text="{Binding MissingEpisodeFinder.NzbCategory}" Watermark="e.g. TV (optional)"/>
                             </StackPanel>
                             <CheckBox Content="Verbose logging" IsChecked="{Binding MissingEpisodeFinder.Verbose}" Margin="0,0,16,8"/>
                             <CheckBox Content="Include specials" IsChecked="{Binding MissingEpisodeFinder.IncludeSpecials}" Margin="0,0,16,8"/>

@@ -77,6 +77,52 @@ public class SeriesMerger(
         return allOperations;
     }
 
+    public async Task<List<MergeOperation>> FlattenEpisodeReleaseFoldersAsync(
+        IEnumerable<MediaItem> items, string libraryRoot, bool dryRun)
+    {
+        var allOperations = new List<MergeOperation>();
+
+        foreach (var item in items.Where(static i => i.Kind == MediaKind.TvSeries))
+        {
+            // Only act on folders whose own name contains an episode token (e.g. "Black Mirror S07E02 1080p x265-AMBER")
+            var parsed = episodeParser.Parse(item.OriginalName);
+            if (parsed is null)
+                continue;
+
+            var cleanTitle = nameNormalizer.Normalize(item.OriginalName, isFilename: true).Title;
+            if (string.IsNullOrWhiteSpace(cleanTitle))
+                continue;
+
+            var destDir = Path.Combine(libraryRoot, cleanTitle, $"Season {parsed.Season}");
+
+            foreach (var videoFile in item.VideoFiles.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                var destFile = Path.Combine(destDir, Path.GetFileName(videoFile));
+                if (string.Equals(videoFile, destFile, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (!dryRun && File.Exists(destFile))
+                    continue;
+
+                logger.LogInformation("{Action} episode release file: {File} \u2192 {Dest}",
+                    dryRun ? "Would move" : "Moving",
+                    Path.GetFileName(videoFile),
+                    destDir);
+
+                allOperations.AddRange(await fileMover.MoveFileAsync(videoFile, destFile, dryRun));
+            }
+        }
+
+        if (allOperations.Count > 0)
+        {
+            logger.LogInformation(
+                "Total episode release folder flatten operations: {Count} (dryRun={DryRun})",
+                allOperations.Count,
+                dryRun);
+        }
+
+        return allOperations;
+    }
+
     public async Task<List<MergeOperation>> DeduplicateTopLevelMovieFilesAsync(string libraryRoot, bool dryRun)
     {
         var operations = new List<MergeOperation>();

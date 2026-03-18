@@ -12,4 +12,10 @@ public interface IEpisodeParser
     /// Returns null if the filename cannot be parsed.
     /// </summary>
     EpisodeInfo? Parse(string filePath);
+
+    /// <summary>
+    /// Returns the new absolute path if the filename should be renamed to standard
+    /// <c>S##E##</c> format, or <see langword="null"/> if it is already standard or unparseable.
+    /// </summary>
+    string? TryNormalizeFilename(string filePath);
 }

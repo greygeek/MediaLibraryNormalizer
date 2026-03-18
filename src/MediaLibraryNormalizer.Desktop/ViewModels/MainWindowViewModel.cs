@@ -70,6 +70,12 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool deleteNonEpisodeFiles;
 
     [ObservableProperty]
+    private bool renameNonStandardFiles;
+
+    [ObservableProperty]
+    private bool flattenEpisodeReleaseFolders;
+
+    [ObservableProperty]
     private bool isBusy;
 
     [ObservableProperty]
@@ -293,6 +299,18 @@ public partial class MainWindowViewModel : ViewModelBase
         SaveSettings();
     }
 
+    partial void OnRenameNonStandardFilesChanged(bool value)
+    {
+        InvalidateReviewApprovalWorkflow();
+        SaveSettings();
+    }
+
+    partial void OnFlattenEpisodeReleaseFoldersChanged(bool value)
+    {
+        InvalidateReviewApprovalWorkflow();
+        SaveSettings();
+    }
+
     partial void OnSelectedDuplicateGroupChanged(DuplicateGroupViewModel? value)
     {
         OnPropertyChanged(nameof(SelectedGroupTitle));
@@ -354,6 +372,8 @@ public partial class MainWindowViewModel : ViewModelBase
             MissingEpisodeFinder.NzbApiKey = config.NzbApiKey;
         if (!string.IsNullOrWhiteSpace(config.NzbWatchFolder))
             MissingEpisodeFinder.NzbWatchFolder = config.NzbWatchFolder;
+        if (!string.IsNullOrWhiteSpace(config.NzbCategory))
+            MissingEpisodeFinder.NzbCategory = config.NzbCategory;
         _hasFreshPreview = false;
     }
 
@@ -384,6 +404,8 @@ public partial class MainWindowViewModel : ViewModelBase
             MissingEpisodeFinder.NzbApiKey = saved.NzbApiKey;
         if (!string.IsNullOrWhiteSpace(saved.NzbWatchFolder))
             MissingEpisodeFinder.NzbWatchFolder = saved.NzbWatchFolder;
+        if (!string.IsNullOrWhiteSpace(saved.NzbCategory))
+            MissingEpisodeFinder.NzbCategory = saved.NzbCategory;
         if (Enum.TryParse<MediaLibraryNormalizer.Audit.CatalogProviderKind>(saved.CatalogProvider, out var provider))
             MissingEpisodeFinder.SelectedCatalogProvider = provider;
 
@@ -396,6 +418,8 @@ public partial class MainWindowViewModel : ViewModelBase
         UseHash = saved.UseHash;
         DeleteSamples = saved.DeleteSamples;
         DeleteNonEpisodeFiles = saved.DeleteNonEpisodeFiles;
+        RenameNonStandardFiles = saved.RenameNonStandardFiles;
+        FlattenEpisodeReleaseFolders = saved.FlattenEpisodeReleaseFolders;
 
         _settingsLoaded = true;
     }
@@ -412,6 +436,7 @@ public partial class MainWindowViewModel : ViewModelBase
         TheTvdbApiKey = MissingEpisodeFinder.TheTvdbApiKey,
         NzbApiKey = MissingEpisodeFinder.NzbApiKey,
         NzbWatchFolder = MissingEpisodeFinder.NzbWatchFolder,
+        NzbCategory = MissingEpisodeFinder.NzbCategory,
         CatalogProvider = MissingEpisodeFinder.SelectedCatalogProvider.ToString(),
         IncludeSpecials = MissingEpisodeFinder.IncludeSpecials,
         Verbose = Verbose,
@@ -421,6 +446,8 @@ public partial class MainWindowViewModel : ViewModelBase
         UseHash = UseHash,
         DeleteSamples = DeleteSamples,
         DeleteNonEpisodeFiles = DeleteNonEpisodeFiles,
+        RenameNonStandardFiles = RenameNonStandardFiles,
+        FlattenEpisodeReleaseFolders = FlattenEpisodeReleaseFolders,
     };
 
     private void OnMissingEpisodeFinderPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -429,6 +456,7 @@ public partial class MainWindowViewModel : ViewModelBase
             nameof(MissingEpisodeFinderViewModel.TheTvdbApiKey) or
             nameof(MissingEpisodeFinderViewModel.NzbApiKey) or
             nameof(MissingEpisodeFinderViewModel.NzbWatchFolder) or
+            nameof(MissingEpisodeFinderViewModel.NzbCategory) or
             nameof(MissingEpisodeFinderViewModel.SelectedCatalogProvider) or
             nameof(MissingEpisodeFinderViewModel.IncludeSpecials))
         {
@@ -502,6 +530,8 @@ public partial class MainWindowViewModel : ViewModelBase
             Verbose = Verbose,
             DeleteSamples = DeleteSamples,
             DeleteNonEpisodeFiles = DeleteNonEpisodeFiles,
+            RenameNonStandardFiles = RenameNonStandardFiles,
+            FlattenEpisodeReleaseFolders = FlattenEpisodeReleaseFolders,
             AiEndpoint = baseConfig.AiEndpoint,
             AiApiKey = baseConfig.AiApiKey,
             AiModel = baseConfig.AiModel,
