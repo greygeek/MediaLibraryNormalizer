@@ -243,6 +243,30 @@ public partial class EpisodeParser : IEpisodeParser
     /// Returns the new absolute file path if the filename should be renamed to standard
     /// <c>S##E##</c> format, or <see langword="null"/> if it already is standard.
     /// </summary>
+    public string? ExtractSeriesTitle(string folderName)
+    {
+        // Find the episode token using each format in priority order
+        Regex[] patterns = [CrossSeasonRangeRegex(), MultiEpisodeRegex(), AltFormatRegex(), VerboseFormatRegex()];
+        Match? earliest = null;
+        foreach (var pattern in patterns)
+        {
+            var m = pattern.Match(folderName);
+            if (m.Success && (earliest is null || m.Index < earliest.Index))
+                earliest = m;
+        }
+
+        if (earliest is null || earliest.Index == 0)
+            return null;
+
+        var raw = folderName[..earliest.Index]
+            .Replace('.', ' ')
+            .Replace('_', ' ')
+            .Trim()
+            .TrimEnd('-', ' ');
+
+        return string.IsNullOrWhiteSpace(raw) ? null : raw;
+    }
+
     public string? TryNormalizeFilename(string filePath)
     {
         var fileName = Path.GetFileNameWithoutExtension(filePath);

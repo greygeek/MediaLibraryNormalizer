@@ -18,4 +18,11 @@ public interface IEpisodeParser
     /// <c>S##E##</c> format, or <see langword="null"/> if it is already standard or unparseable.
     /// </summary>
     string? TryNormalizeFilename(string filePath);
+
+    /// <summary>
+    /// Extracts the series title from a per-episode release folder name by returning
+    /// the text before the first episode token (e.g. <c>S07E02</c>).
+    /// Returns <see langword="null"/> if no episode token is found or the token is at position 0.
+    /// </summary>
+    string? ExtractSeriesTitle(string folderName);
 }

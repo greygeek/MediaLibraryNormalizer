@@ -89,7 +89,9 @@ public class SeriesMerger(
             if (parsed is null)
                 continue;
 
-            var cleanTitle = nameNormalizer.Normalize(item.OriginalName, isFilename: true).Title;
+            // Extract only the text before the episode token — avoids episode titles and
+            // audio codec tags (e.g. "AAC5 1") polluting the series folder name.
+            var cleanTitle = episodeParser.ExtractSeriesTitle(item.OriginalName);
             if (string.IsNullOrWhiteSpace(cleanTitle))
                 continue;
 
