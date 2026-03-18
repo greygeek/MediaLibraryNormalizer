@@ -23,6 +23,7 @@ public sealed class AppSettingsRepository(AppDbContextFactory factory) : IAppSet
             UseAi                     = rows.GetValueOrDefault("UseAi", "false") == "true",
             UseHash                   = rows.GetValueOrDefault("UseHash", "false") == "true",
             DeleteSamples             = rows.GetValueOrDefault("DeleteSamples", "false") == "true",
+            DeleteNonEpisodeFiles     = rows.GetValueOrDefault("DeleteNonEpisodeFiles", "false") == "true",
         };
     }
 
@@ -44,6 +45,7 @@ public sealed class AppSettingsRepository(AppDbContextFactory factory) : IAppSet
             ["UseAi"]                     = settings.UseAi ? "true" : "false",
             ["UseHash"]                   = settings.UseHash ? "true" : "false",
             ["DeleteSamples"]             = settings.DeleteSamples ? "true" : "false",
+            ["DeleteNonEpisodeFiles"]     = settings.DeleteNonEpisodeFiles ? "true" : "false",
         };
 
         var existingKeys = await db.Settings

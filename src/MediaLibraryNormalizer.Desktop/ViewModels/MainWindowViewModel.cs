@@ -67,6 +67,9 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool deleteSamples;
 
     [ObservableProperty]
+    private bool deleteNonEpisodeFiles;
+
+    [ObservableProperty]
     private bool isBusy;
 
     [ObservableProperty]
@@ -284,6 +287,12 @@ public partial class MainWindowViewModel : ViewModelBase
         SaveSettings();
     }
 
+    partial void OnDeleteNonEpisodeFilesChanged(bool value)
+    {
+        InvalidateReviewApprovalWorkflow();
+        SaveSettings();
+    }
+
     partial void OnSelectedDuplicateGroupChanged(DuplicateGroupViewModel? value)
     {
         OnPropertyChanged(nameof(SelectedGroupTitle));
@@ -386,6 +395,7 @@ public partial class MainWindowViewModel : ViewModelBase
         UseAi = saved.UseAi;
         UseHash = saved.UseHash;
         DeleteSamples = saved.DeleteSamples;
+        DeleteNonEpisodeFiles = saved.DeleteNonEpisodeFiles;
 
         _settingsLoaded = true;
     }
@@ -410,6 +420,7 @@ public partial class MainWindowViewModel : ViewModelBase
         UseAi = UseAi,
         UseHash = UseHash,
         DeleteSamples = DeleteSamples,
+        DeleteNonEpisodeFiles = DeleteNonEpisodeFiles,
     };
 
     private void OnMissingEpisodeFinderPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -490,6 +501,7 @@ public partial class MainWindowViewModel : ViewModelBase
             UseHash = UseHash,
             Verbose = Verbose,
             DeleteSamples = DeleteSamples,
+            DeleteNonEpisodeFiles = DeleteNonEpisodeFiles,
             AiEndpoint = baseConfig.AiEndpoint,
             AiApiKey = baseConfig.AiApiKey,
             AiModel = baseConfig.AiModel,

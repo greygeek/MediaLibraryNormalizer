@@ -32,6 +32,7 @@ public class NormalizerRunner : INormalizerRunner
         var emptyCleaner = serviceProvider.GetRequiredService<IEmptyFolderCleaner>();
         var reporter = serviceProvider.GetRequiredService<IReportGenerator>();
         var txLog = serviceProvider.GetRequiredService<ITransactionLog>();
+        var fileMover = serviceProvider.GetRequiredService<IFileMover>();
         var cleanupFailures = new List<FolderCleanupFailure>();
         var approvedCleanupFolderCount = 0;
         var globalCleanupSweepFolderCount = 0;
@@ -123,6 +124,42 @@ public class NormalizerRunner : INormalizerRunner
         cancellationToken.ThrowIfCancellationRequested();
         var topLevelMovieDedupeOperations = await merger.DeduplicateTopLevelMovieFilesAsync(config.LibraryPath, config.DryRun);
         allOperations.AddRange(topLevelMovieDedupeOperations);
+
+        if (config.DeleteSamples)
+        {
+            progress?.Report("Deleting sample files...");
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (var item in items)
+            {
+                foreach (var file in Directory.EnumerateFiles(item.Path, "*.*", SearchOption.AllDirectories))
+                {
+                    if (fileDetector.IsSampleVideoFile(file))
+                    {
+                        logger.LogInformation("{Action} sample file: {File}",
+                            config.DryRun ? "Would delete" : "Deleting", Path.GetFileName(file));
+                        allOperations.AddRange(await fileMover.DeleteFileAsync(file, config.DryRun, OperationType.DeleteSample));
+                    }
+                }
+            }
+        }
+
+        if (config.DeleteNonEpisodeFiles)
+        {
+            progress?.Report("Deleting non-episode video files...");
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (var item in items.Where(static i => i.Kind == MediaKind.TvSeries))
+            {
+                foreach (var videoFile in item.VideoFiles)
+                {
+                    if (episodeParser.Parse(videoFile) is null)
+                    {
+                        logger.LogInformation("{Action} non-episode file: {File}",
+                            config.DryRun ? "Would delete" : "Deleting", Path.GetFileName(videoFile));
+                        allOperations.AddRange(await fileMover.DeleteFileAsync(videoFile, config.DryRun, OperationType.DeleteNonEpisode));
+                    }
+                }
+            }
+        }
 
         if (approvedSeriesKeys is not null && mergeGroups.Count > 0)
         {
@@ -237,6 +274,7 @@ public class NormalizerRunner : INormalizerRunner
             HashSizeMB = config.HashSizeMB,
             MaxConcurrency = config.MaxConcurrency,
             DeleteSamples = config.DeleteSamples,
+            DeleteNonEpisodeFiles = config.DeleteNonEpisodeFiles,
             DryRun = config.DryRun,
             Merge = config.Merge,
             ExactMatchesWithFilesOnly = config.ExactMatchesWithFilesOnly,

@@ -20,6 +20,9 @@ public interface IMediaFileDetector
     /// <summary>Returns true if the file is a sample file that should be ignored.</summary>
     bool IsSampleFile(string filePath);
 
+    /// <summary>Returns true if the file is a video file matching the sample naming pattern (video extension + sample pattern).</summary>
+    bool IsSampleVideoFile(string filePath);
+
     /// <summary>
     /// Enumerate all video files under the given directory (streaming).
     /// Excludes sample files.

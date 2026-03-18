@@ -23,6 +23,9 @@ public class NormalizerConfig
     /// <summary>Whether to delete sample files.</summary>
     public bool DeleteSamples { get; set; }
 
+    /// <summary>Whether to delete video files inside TV series folders that cannot be parsed as episodes.</summary>
+    public bool DeleteNonEpisodeFiles { get; set; }
+
     // --- CLI flags ---
 
     /// <summary>Preview mode — no filesystem changes (default true).</summary>

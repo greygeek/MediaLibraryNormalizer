@@ -18,5 +18,6 @@ public enum OperationType
     CreateDirectory,
     Rename,
     DeleteSample,
-    DeleteDuplicate
+    DeleteDuplicate,
+    DeleteNonEpisode
 }

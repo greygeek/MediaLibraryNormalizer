@@ -58,6 +58,9 @@ public class MediaFileDetector : IMediaFileDetector
             fileName.Contains(p, StringComparison.OrdinalIgnoreCase));
     }
 
+    public bool IsSampleVideoFile(string filePath) =>
+        VideoExtensions.Contains(Path.GetExtension(filePath)) && IsSampleFile(filePath);
+
     public IEnumerable<string> EnumerateVideoFiles(string directoryPath)
     {
         directoryPath = ResolveAccessibleDirectoryPath(directoryPath) ?? directoryPath;

@@ -35,4 +35,6 @@ public class AppSettings
     public bool UseHash { get; set; }
 
     public bool DeleteSamples { get; set; }
+
+    public bool DeleteNonEpisodeFiles { get; set; }
 }
