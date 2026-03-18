@@ -375,6 +375,10 @@
                                     <TextBox Text="{Binding MissingEpisodeFinder.NzbApiKey}" PasswordChar="&#x2022;" Watermark="nzbplanet.net (optional)"/>
                                 </DockPanel>
                             </StackPanel>
+                            <StackPanel Margin="0,0,16,8">
+                                <TextBlock Text="SABnzbd Watch Folder" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                <TextBox Text="{Binding MissingEpisodeFinder.NzbWatchFolder}" Watermark="e.g. F:\NZB\Watch"/>
+                            </StackPanel>
                             <CheckBox Content="Verbose logging" IsChecked="{Binding MissingEpisodeFinder.Verbose}" Margin="0,0,16,8"/>
                             <CheckBox Content="Include specials" IsChecked="{Binding MissingEpisodeFinder.IncludeSpecials}" Margin="0,0,16,8"/>
                         </WrapPanel>

@@ -73,4 +73,7 @@ public class NormalizerConfig
 
     /// <summary>NZBPlanet API key for Usenet availability checks (optional).</summary>
     public string? NzbApiKey { get; set; }
+
+    /// <summary>Folder watched by SABnzbd (or similar); NZB files are dropped here automatically.</summary>
+    public string? NzbWatchFolder { get; set; }
 }

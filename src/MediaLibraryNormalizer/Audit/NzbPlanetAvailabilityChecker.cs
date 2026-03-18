@@ -1,3 +1,4 @@
+using System.IO;
 using System.Xml.Linq;
 
 namespace MediaLibraryNormalizer.Audit;
@@ -8,8 +9,6 @@ namespace MediaLibraryNormalizer.Audit;
 public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDisposable
 {
     private const string ApiBase = "https://api.nzbplanet.net/api";
-    // User functions (cart) use the /rss endpoint, not /api
-    private const string RssBase = "https://api.nzbplanet.net/rss";
 
     private readonly HttpClient _httpClient;
     private readonly string _apiKey;
@@ -88,24 +87,14 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
                 // Fall back to parsing the <guid> which may be a /details/<hash> URL.
                 var guidRaw = item.Element("guid")?.Value;
                 var nzbId = ExtractIdFromUrl(link) ?? ExtractIdFromUrl(guidRaw) ?? ExtractPathSegmentId(guidRaw);
-                var userId = ExtractParamFromGetnzbUrl(link, "i");
-                var rssKey = ExtractParamFromGetnzbUrl(link, "r");
 
-                return new NzbSearchResult(title, sizeBytes, postedAt, link, nzbId, userId, rssKey);
+                return new NzbSearchResult(title, sizeBytes, postedAt, link, nzbId);
             }).ToList();
         }
         catch
         {
             return [];
         }
-    }
-
-    /// Extracts a named parameter from a NZBPlanet getnzb URL (e.g. .../getnzb/HASH.nzb&i=12345&r=KEY).
-    private static string? ExtractParamFromGetnzbUrl(string? url, string name)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return null;
-        var m = System.Text.RegularExpressions.Regex.Match(url, $@"[?&]{System.Text.RegularExpressions.Regex.Escape(name)}=([^&]+)");
-        return m.Success ? m.Groups[1].Value : null;
     }
 
     /// Extracts the `id` query parameter from a URL (e.g. ?t=get&id=HASH&apikey=...).
@@ -128,42 +117,16 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
         return string.IsNullOrWhiteSpace(segment) ? null : segment;
     }
 
-    public async Task<bool> AddToCartAsync(string nzbId, string? userId = null, string? rssKey = null, CancellationToken ct = default)
+    public async Task<bool> DownloadNzbAsync(string downloadUrl, string destPath, CancellationToken ct = default)
     {
-        // NZBPlanet user functions require i= (user id) and r= (rss/api key) auth.
-        // Extract both from the getnzb download URL embedded in every search result —
-        // this is the only reliable source, since the RSS key may differ from apikey=.
-        string url;
-        string logUrl;
-        if (!string.IsNullOrWhiteSpace(userId) && !string.IsNullOrWhiteSpace(rssKey))
-        {
-            url = $"{RssBase}?t=cartadd&id={Uri.EscapeDataString(nzbId)}&i={Uri.EscapeDataString(userId)}&r={Uri.EscapeDataString(rssKey)}";
-            logUrl = url.Replace(rssKey, "***");
-        }
-        else
-        {
-            // Fallback: use apikey= (may not work for cart; logged so the user can investigate)
-            url = $"{RssBase}?t=cartadd&id={Uri.EscapeDataString(nzbId)}&apikey={Uri.EscapeDataString(_apiKey)}";
-            logUrl = url.Replace(_apiKey, "***");
-            _log?.Invoke("[NZBPlanet] Warning: could not extract i=/r= from download URL; falling back to apikey= for cartadd.");
-        }
-        _log?.Invoke($"[NZBPlanet] CartAdd GET {logUrl}");
-        using var response = await _httpClient.GetAsync(url, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
-        _log?.Invoke($"[NZBPlanet] CartAdd response {(int)response.StatusCode}: {body}");
-        if (!response.IsSuccessStatusCode) return false;
-        return !IsNewznabError(body);
-    }
-
-    private static bool IsNewznabError(string xmlBody)
-    {
-        try
-        {
-            var doc = XDocument.Parse(xmlBody);
-            return doc.Root?.Name.LocalName == "error" ||
-                   doc.Descendants("error").Any();
-        }
-        catch { return false; }
+        _log?.Invoke($"[NZBPlanet] Downloading NZB → {Path.GetFileName(destPath)}");
+        using var response = await _httpClient.GetAsync(downloadUrl, ct);
+        response.EnsureSuccessStatusCode();
+        var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+        Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+        await File.WriteAllBytesAsync(destPath, bytes, ct);
+        _log?.Invoke($"[NZBPlanet] Saved {bytes.Length / 1024} KB → {destPath}");
+        return true;
     }
 
     /// <summary>

@@ -343,6 +343,8 @@ public partial class MainWindowViewModel : ViewModelBase
             MissingEpisodeFinder.TheTvdbApiKey = config.TheTvdbApiKey;
         if (!string.IsNullOrWhiteSpace(config.NzbApiKey))
             MissingEpisodeFinder.NzbApiKey = config.NzbApiKey;
+        if (!string.IsNullOrWhiteSpace(config.NzbWatchFolder))
+            MissingEpisodeFinder.NzbWatchFolder = config.NzbWatchFolder;
         _hasFreshPreview = false;
     }
 
@@ -371,6 +373,8 @@ public partial class MainWindowViewModel : ViewModelBase
             MissingEpisodeFinder.TheTvdbApiKey = saved.TheTvdbApiKey;
         if (!string.IsNullOrWhiteSpace(saved.NzbApiKey))
             MissingEpisodeFinder.NzbApiKey = saved.NzbApiKey;
+        if (!string.IsNullOrWhiteSpace(saved.NzbWatchFolder))
+            MissingEpisodeFinder.NzbWatchFolder = saved.NzbWatchFolder;
         if (Enum.TryParse<MediaLibraryNormalizer.Audit.CatalogProviderKind>(saved.CatalogProvider, out var provider))
             MissingEpisodeFinder.SelectedCatalogProvider = provider;
 
@@ -397,6 +401,7 @@ public partial class MainWindowViewModel : ViewModelBase
         LibraryPath = LibraryPath,
         TheTvdbApiKey = MissingEpisodeFinder.TheTvdbApiKey,
         NzbApiKey = MissingEpisodeFinder.NzbApiKey,
+        NzbWatchFolder = MissingEpisodeFinder.NzbWatchFolder,
         CatalogProvider = MissingEpisodeFinder.SelectedCatalogProvider.ToString(),
         IncludeSpecials = MissingEpisodeFinder.IncludeSpecials,
         Verbose = Verbose,
@@ -412,6 +417,7 @@ public partial class MainWindowViewModel : ViewModelBase
         if (e.PropertyName is
             nameof(MissingEpisodeFinderViewModel.TheTvdbApiKey) or
             nameof(MissingEpisodeFinderViewModel.NzbApiKey) or
+            nameof(MissingEpisodeFinderViewModel.NzbWatchFolder) or
             nameof(MissingEpisodeFinderViewModel.SelectedCatalogProvider) or
             nameof(MissingEpisodeFinderViewModel.IncludeSpecials))
         {

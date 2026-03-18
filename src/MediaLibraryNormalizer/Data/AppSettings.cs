@@ -14,6 +14,8 @@ public class AppSettings
 
     public string NzbApiKey { get; set; } = string.Empty;
 
+    public string NzbWatchFolder { get; set; } = string.Empty;
+
     public string CatalogProvider { get; set; } = "None";
 
     public bool IncludeSpecials { get; set; }

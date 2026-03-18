@@ -89,9 +89,12 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     [ObservableProperty]
     private string nzbApiKey = string.Empty;
 
+    [ObservableProperty]
+    private string nzbWatchFolder = string.Empty;
+
     public bool IsTheTvdbSelected => SelectedCatalogProvider == CatalogProviderKind.TheTvdb;
 
-    public bool IsNzbConfigured => !string.IsNullOrWhiteSpace(NzbApiKey);
+    public bool IsNzbConfigured => !string.IsNullOrWhiteSpace(NzbApiKey) && !string.IsNullOrWhiteSpace(NzbWatchFolder);
 
     public bool HasNzbResults => NzbResults.Count > 0;
 
@@ -234,6 +237,13 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
     }
 
+    partial void OnNzbWatchFolderChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsNzbConfigured));
+        OnPropertyChanged(nameof(QueueMissingDownloadsToolTip));
+        QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
+    }
+
     partial void OnLibraryPathChanged(string value)
     {
         RunInventoryCommand.NotifyCanExecuteChanged();
@@ -272,9 +282,9 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         && SelectedSeries is { HasMissingEpisodes: true };
 
     public string QueueMissingDownloadsToolTip =>
-        !IsNzbConfigured ? "Enter an NZBPlanet API key in Settings to enable this."
+        !IsNzbConfigured ? "Enter an NZBPlanet API key and NZB watch folder in Settings to enable this."
         : SelectedSeries is not { HasMissingEpisodes: true } ? "No missing episodes for this series."
-        : "Search NZBPlanet for each missing episode and add the best match to your cart.";
+        : "Search NZBPlanet for each missing episode and save the best NZB to the watch folder.";
 
     private bool CanModifySeries() => SelectedSeries is not null && !IsBusy;
 
@@ -487,7 +497,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
     private async Task QueueMissingDownloadsAsync()
     {
-        if (SelectedSeries is null || string.IsNullOrWhiteSpace(NzbApiKey)) return;
+        if (SelectedSeries is null || string.IsNullOrWhiteSpace(NzbApiKey) || string.IsNullOrWhiteSpace(NzbWatchFolder)) return;
 
         IsQueueingDownloads = true;
         var series = SelectedSeries;
@@ -508,28 +518,30 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                     ParseEpisode(ep.Key));
 
                 var preferred = NzbPlanetAvailabilityChecker.SelectPreferred(results);
-                if (preferred is null || string.IsNullOrWhiteSpace(preferred.NzbId))
+                if (preferred is null || string.IsNullOrWhiteSpace(preferred.DownloadUrl))
                 {
                     notFound++;
                     ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → not found on NZBPlanet.");
                     continue;
                 }
 
-                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → selected: {preferred.Title} (id={preferred.NzbId}, i={preferred.UserId}, r={(preferred.RssKey is not null ? "***" : "null")})");
-                var added = await checker.AddToCartAsync(preferred.NzbId, preferred.UserId, preferred.RssKey);
-                if (added)
+                var filename = SanitizeFilename(preferred.Title) + ".nzb";
+                var destPath = Path.Combine(NzbWatchFolder.Trim(), filename);
+                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → selected: {preferred.Title}");
+                var saved = await checker.DownloadNzbAsync(preferred.DownloadUrl, destPath);
+                if (saved)
                 {
                     queued++;
-                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → added to cart: {preferred.Title}");
+                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → saved: {filename}");
                 }
                 else
                 {
                     notFound++;
-                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → cart add failed (see response above).");
+                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → download failed (see above).");
                 }
             }
 
-            StatusMessage = $"Queued {queued} of {queued + notFound} missing episodes for {series.DisplayTitle}.";
+            StatusMessage = $"Saved {queued} of {queued + notFound} NZBs to {NzbWatchFolder}.";
         }
         catch (Exception ex)
         {
@@ -541,6 +553,12 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
             IsQueueingDownloads = false;
             QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
         }
+    }
+
+    private static string SanitizeFilename(string title)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        return string.Concat(title.Select(c => Array.IndexOf(invalid, c) >= 0 ? '_' : c)).Trim();
     }
 
     private void PendingDeleteSeries()
