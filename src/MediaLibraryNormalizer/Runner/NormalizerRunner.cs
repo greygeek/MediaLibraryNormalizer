@@ -148,6 +148,25 @@ public class NormalizerRunner : INormalizerRunner
             }
             var orphanFlattenOps = await merger.FlattenOrphanedSeriesFoldersAsync(refreshedItems, config.LibraryPath, config.DryRun);
             allOperations.AddRange(orphanFlattenOps);
+
+            // The flatten phases may have created new Season N subfolders inside an existing
+            // series folder that already had Season 0N subfolders (e.g. "Season 1" alongside
+            // "Season 01"). Run MergeSimilarSubfoldersAsync again with a fresh scan so those
+            // pairs are merged and the canonical zero-padded name is preserved.
+            progress?.Report("Merging season sub-folders created by flatten...");
+            cancellationToken.ThrowIfCancellationRequested();
+            var postFlattenItems = scanner.Scan(config.LibraryPath).ToList();
+            foreach (var refreshed in postFlattenItems)
+            {
+                var normalized = refreshed.IsUnpackFolder
+                    ? normalizer.NormalizeUnpackFolder(refreshed.OriginalName)
+                    : normalizer.Normalize(refreshed.OriginalName);
+                refreshed.NormalizedName = normalized.Title;
+                refreshed.Year = normalized.Year;
+                refreshed.Kind = ClassifyMediaKind(refreshed, episodeParser);
+            }
+            var postFlattenSubfolderOps = await merger.MergeSimilarSubfoldersAsync(postFlattenItems, config.DryRun);
+            allOperations.AddRange(postFlattenSubfolderOps);
         }
 
         if (config.UseAiOrganizer)
