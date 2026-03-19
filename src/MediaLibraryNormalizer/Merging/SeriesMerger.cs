@@ -116,18 +116,8 @@ public class SeriesMerger(
             // Delete leftover artifact files (.nfo, images, etc.) so the source folder becomes empty
             allOperations.AddRange(await DeleteMovieArtifactFilesAsync(item.Path, dryRun));
 
-            // Delete the now-empty episode release folder
-            if (CanDeleteMergedFolder(item.Path, allOperations, dryRun))
-            {
-                var deleteOp = new MergeOperation(item.Path, string.Empty, OperationType.Delete, dryRun);
-                allOperations.Add(deleteOp);
-
-                if (!dryRun)
-                {
-                    DeleteDirectoryRobust(item.Path);
-                    await transactionLog.LogAsync(deleteOp);
-                }
-            }
+            // Delete the now video-free episode release folder (including any remaining subtitle/junk files)
+            allOperations.AddRange(await DeleteVideoFreeFolderAsync(item.Path, allOperations, dryRun));
         }
 
         if (allOperations.Count > 0)
@@ -157,9 +147,15 @@ public class SeriesMerger(
         foreach (var item in allItems.Where(item =>
             item.SeasonFolders.Count == 0 &&
             episodeParser.Parse(item.OriginalName) is null &&
-            item.VideoFiles.Count > 0 &&
             Directory.Exists(item.Path)))
         {
+            // Already-empty release folders (videos moved in a prior run, junk remains)
+            if (item.VideoFiles.Count == 0)
+            {
+                allOperations.AddRange(await DeleteVideoFreeFolderAsync(item.Path, allOperations, dryRun));
+                continue;
+            }
+
             if (item.Kind == MediaKind.TvSeries)
             {
                 // The video files have parseable S##E## tokens — distribute them to Season N
@@ -192,17 +188,7 @@ public class SeriesMerger(
 
                 allOperations.AddRange(await DeleteMovieArtifactFilesAsync(item.Path, dryRun));
 
-                if (CanDeleteMergedFolder(item.Path, allOperations, dryRun))
-                {
-                    var deleteOp = new MergeOperation(item.Path, string.Empty, OperationType.Delete, dryRun);
-                    allOperations.Add(deleteOp);
-
-                    if (!dryRun)
-                    {
-                        DeleteDirectoryRobust(item.Path);
-                        await transactionLog.LogAsync(deleteOp);
-                    }
-                }
+                allOperations.AddRange(await DeleteVideoFreeFolderAsync(item.Path, allOperations, dryRun));
             }
         }
 
@@ -252,17 +238,56 @@ public class SeriesMerger(
         }
 
         ops.AddRange(await DeleteMovieArtifactFilesAsync(item.Path, dryRun));
+        ops.AddRange(await DeleteVideoFreeFolderAsync(item.Path, ops, dryRun));
 
-        if (CanDeleteMergedFolder(item.Path, ops, dryRun))
+        return ops;
+    }
+
+    /// <summary>
+    /// Deletes a source folder once it has no more video files, regardless of any remaining
+    /// subtitle / artifact / junk files. Forces recursive deletion so leftover .srt, .nfo, etc.
+    /// are cleaned up without needing a separate artifact-deletion pass.
+    /// </summary>
+    private async Task<List<MergeOperation>> DeleteVideoFreeFolderAsync(
+        string folderPath, List<MergeOperation> priorOps, bool dryRun)
+    {
+        var ops = new List<MergeOperation>();
+        var resolved = ResolveAccessibleDirectoryPath(folderPath) ?? folderPath;
+
+        if (!Directory.Exists(resolved))
+            return ops;
+
+        if (dryRun)
         {
-            var deleteOp = new MergeOperation(item.Path, string.Empty, OperationType.Delete, dryRun);
-            ops.Add(deleteOp);
-
-            if (!dryRun)
+            // In dry-run, check that all video files in the folder are accounted for
+            var videoFiles = fileDetector.EnumerateVideoFiles(resolved).ToList();
+            if (videoFiles.Count > 0)
             {
-                DeleteDirectoryRobust(item.Path);
-                await transactionLog.LogAsync(deleteOp);
+                var handledSources = priorOps
+                    .Where(op => op.Type is OperationType.Move or OperationType.DeleteDuplicate or OperationType.DeleteSample)
+                    .Select(op => op.Source)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                if (!videoFiles.All(handledSources.Contains))
+                    return ops;
             }
+        }
+        else
+        {
+            // Live: only delete if no video files remain
+            if (fileDetector.EnumerateVideoFiles(resolved).Any())
+                return ops;
+        }
+
+        logger.LogInformation("{Action} video-free release folder: {Folder}",
+            dryRun ? "Would delete" : "Deleting", folderPath);
+
+        var deleteOp = new MergeOperation(folderPath, string.Empty, OperationType.Delete, dryRun);
+        ops.Add(deleteOp);
+
+        if (!dryRun)
+        {
+            DeleteDirectoryRobust(resolved);
+            await transactionLog.LogAsync(deleteOp);
         }
 
         return ops;
