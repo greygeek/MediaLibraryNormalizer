@@ -81,20 +81,33 @@ public class SeriesMerger(
         IEnumerable<MediaItem> items, string libraryRoot, bool dryRun)
     {
         var allOperations = new List<MergeOperation>();
+        var allItemsList = items.ToList();
 
-        foreach (var item in items.Where(static i => i.Kind == MediaKind.TvSeries))
+        foreach (var item in allItemsList)
         {
             // Only act on folders whose own name contains an episode token (e.g. "Black Mirror S07E02 1080p x265-AMBER")
             var parsed = episodeParser.Parse(item.OriginalName);
             if (parsed is null)
                 continue;
 
-            // Extract only the text before the episode token — avoids episode titles and
-            // audio codec tags (e.g. "AAC5 1") polluting the series folder name.
-            var cleanTitle = episodeParser.ExtractSeriesTitle(item.OriginalName);
-            if (string.IsNullOrWhiteSpace(cleanTitle))
+            // Leftover folder from a prior run: videos already moved, only junk remains
+            if (item.VideoFiles.Count == 0)
+            {
+                allOperations.AddRange(await DeleteVideoFreeFolderAsync(item.Path, allOperations, dryRun));
+                continue;
+            }
+
+            if (item.Kind != MediaKind.TvSeries)
                 continue;
 
+            // Extract only the text before the episode token — avoids episode titles and
+            // audio codec tags (e.g. "AAC5 1") polluting the series folder name.
+            var rawTitle = episodeParser.ExtractSeriesTitle(item.OriginalName);
+            if (string.IsNullOrWhiteSpace(rawTitle))
+                continue;
+
+            // Resolve to a canonical existing series folder name (prevents Brooklyn Nine Nine vs Brooklyn Nine-Nine split)
+            var cleanTitle = ResolveCanonicalSeriesName(rawTitle, allItemsList);
             var destDir = Path.Combine(libraryRoot, cleanTitle, $"Season {parsed.Season}");
 
             foreach (var videoFile in item.VideoFiles.Distinct(StringComparer.OrdinalIgnoreCase))
@@ -137,9 +150,11 @@ public class SeriesMerger(
         var allItems = items.ToList();
         var allOperations = new List<MergeOperation>();
 
-        // Established series folders — those that already have a proper Season N structure
-        var establishedSeries = allItems
-            .Where(static i => i.Kind == MediaKind.TvSeries && i.SeasonFolders.Count > 0)
+        // All TvSeries folders at the root — used for canonical name lookup and prefix-matching.
+        // We include ALL TvSeries items here, not just those with season folders, so that a flat
+        // series folder (e.g. "Brooklyn Nine-Nine") is still considered an established home.
+        var allSeries = allItems
+            .Where(static i => i.Kind == MediaKind.TvSeries)
             .ToList();
 
         // Candidates: no season sub-structure, no S##E## in the folder name itself
@@ -159,13 +174,13 @@ public class SeriesMerger(
             if (item.Kind == MediaKind.TvSeries)
             {
                 // The video files have parseable S##E## tokens — distribute them to Season N
-                var ops = await DistributeParsableVideoFilesAsync(item, libraryRoot, dryRun);
+                var ops = await DistributeParsableVideoFilesAsync(item, libraryRoot, allItems, dryRun);
                 allOperations.AddRange(ops);
             }
             else
             {
                 // No S##E## anywhere — match by series name prefix and route to Season 0
-                var matchingSeries = FindSeriesByPrefix(item.NormalizedName, establishedSeries);
+                var matchingSeries = FindSeriesByPrefix(item.NormalizedName, allSeries);
                 if (matchingSeries is null)
                     continue;
 
@@ -204,7 +219,7 @@ public class SeriesMerger(
     }
 
     private async Task<List<MergeOperation>> DistributeParsableVideoFilesAsync(
-        MediaItem item, string libraryRoot, bool dryRun)
+        MediaItem item, string libraryRoot, IReadOnlyList<MediaItem> allItems, bool dryRun)
     {
         var ops = new List<MergeOperation>();
 
@@ -216,11 +231,14 @@ public class SeriesMerger(
 
             // Get series title from the video filename (text before the S##E## token),
             // falling back to the folder's normalized name if extraction fails.
-            var seriesTitle = episodeParser.ExtractSeriesTitle(Path.GetFileNameWithoutExtension(videoFile))
-                              ?? item.NormalizedName;
+            var rawTitle = episodeParser.ExtractSeriesTitle(Path.GetFileNameWithoutExtension(videoFile))
+                           ?? item.NormalizedName;
 
-            if (string.IsNullOrWhiteSpace(seriesTitle))
+            if (string.IsNullOrWhiteSpace(rawTitle))
                 continue;
+
+            // Resolve to a canonical existing series folder name
+            var seriesTitle = ResolveCanonicalSeriesName(rawTitle, allItems);
 
             var destDir = Path.Combine(libraryRoot, seriesTitle, $"Season {parsed.Season}");
             var destFile = Path.Combine(destDir, Path.GetFileName(videoFile));
@@ -291,6 +309,26 @@ public class SeriesMerger(
         }
 
         return ops;
+    }
+
+    /// <summary>
+    /// Given a raw series title extracted from a release folder or filename, find an existing
+    /// TvSeries item at the library root whose normalized name matches (treating hyphens and
+    /// spaces as equivalent). Returns that item's OriginalName so files route to the canonical
+    /// existing folder rather than creating a new variant-named folder.
+    /// </summary>
+    private static string ResolveCanonicalSeriesName(string rawTitle, IReadOnlyList<MediaItem> allItems)
+    {
+        var needle = rawTitle.ToLowerInvariant().Replace('-', ' ').Trim();
+
+        var match = allItems
+            .Where(i => i.Kind == MediaKind.TvSeries && !string.IsNullOrWhiteSpace(i.NormalizedName))
+            .OrderByDescending(static i => i.SeasonFolders.Count)  // prefer folders already organised
+            .ThenByDescending(static i => i.VideoFiles.Count)       // then the one with more files
+            .FirstOrDefault(i =>
+                i.NormalizedName.ToLowerInvariant().Replace('-', ' ').Trim() == needle);
+
+        return match?.OriginalName ?? rawTitle;
     }
 
     /// <summary>
