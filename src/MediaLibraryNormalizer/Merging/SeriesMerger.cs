@@ -112,6 +112,22 @@ public class SeriesMerger(
 
                 allOperations.AddRange(await fileMover.MoveFileAsync(videoFile, destFile, dryRun));
             }
+
+            // Delete leftover artifact files (.nfo, images, etc.) so the source folder becomes empty
+            allOperations.AddRange(await DeleteMovieArtifactFilesAsync(item.Path, dryRun));
+
+            // Delete the now-empty episode release folder
+            if (CanDeleteMergedFolder(item.Path, allOperations, dryRun))
+            {
+                var deleteOp = new MergeOperation(item.Path, string.Empty, OperationType.Delete, dryRun);
+                allOperations.Add(deleteOp);
+
+                if (!dryRun)
+                {
+                    DeleteDirectoryRobust(item.Path);
+                    await transactionLog.LogAsync(deleteOp);
+                }
+            }
         }
 
         if (allOperations.Count > 0)
