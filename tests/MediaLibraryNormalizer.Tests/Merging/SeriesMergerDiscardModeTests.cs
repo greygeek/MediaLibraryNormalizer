@@ -479,6 +479,122 @@ public class SeriesMergerDiscardModeTests : IDisposable
         Assert.Contains(ops, op => op.Type == OperationType.DeleteDuplicate && op.Source == losingVideo);
     }
 
+    [Fact]
+    public async Task FlattenOrphanedSeriesFoldersAsync_EpisodeTitledContainerWithSeasonSubfolder_MovesToCanonicalSeriesFolder()
+    {
+        // Simulate: Brooklyn Nine-Nine Defense Rests AAC5 1/Season 3/Brooklyn.Nine-Nine.S03E12.Defense.Rests.mkv
+        // Expected: Brooklyn Nine-Nine/Season 3/Brooklyn.Nine-Nine.S03E12.Defense.Rests.mkv
+        var libraryRoot = CreateDirectory("FlattenOrphanedLibRoot");
+
+        // Canonical series folder (exists but is flat — no season subfolders yet)
+        var canonicalSeriesDir = Directory.CreateDirectory(Path.Combine(libraryRoot, "Brooklyn Nine-Nine")).FullName;
+
+        // Episode-titled container folder with a Season 3 subfolder
+        var containerDir = Directory.CreateDirectory(Path.Combine(libraryRoot, "Brooklyn Nine-Nine Defense Rests AAC5 1")).FullName;
+        var containerSeason = Directory.CreateDirectory(Path.Combine(containerDir, "Season 3")).FullName;
+        var episodeFile = CreateFile(containerSeason, "Brooklyn.Nine-Nine.S03E12.Defense.Rests.1080p.mkv");
+
+        var sut = CreateSut(new NormalizerConfig());
+
+        var canonicalItem = new MediaItem
+        {
+            Path = canonicalSeriesDir,
+            OriginalName = "Brooklyn Nine-Nine",
+            NormalizedName = "Brooklyn Nine-Nine",
+            Kind = MediaKind.TvSeries,
+            VideoFiles = [],
+            SeasonFolders = []
+        };
+
+        var containerItem = new MediaItem
+        {
+            Path = containerDir,
+            OriginalName = "Brooklyn Nine-Nine Defense Rests AAC5 1",
+            NormalizedName = "Brooklyn Nine-Nine Defense Rests AAC5 1",
+            Kind = MediaKind.TvSeries,
+            VideoFiles = [episodeFile],
+            SeasonFolders = [containerSeason]
+        };
+
+        var ops = await sut.FlattenOrphanedSeriesFoldersAsync(
+            [canonicalItem, containerItem], libraryRoot, dryRun: true);
+
+        var expectedDest = Path.Combine(canonicalSeriesDir, "Season 3", Path.GetFileName(episodeFile));
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Move &&
+            op.Source == episodeFile &&
+            op.Destination == expectedDest);
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Delete &&
+            op.Source == containerDir);
+    }
+
+    [Fact]
+    public async Task FlattenOrphanedSeriesFoldersAsync_EpisodeTitledContainer_NoCanonicalFolder_CreatesNewSeriesFolder()
+    {
+        // No existing "Brooklyn Nine-Nine" folder at root; series title comes from video filename.
+        var libraryRoot = CreateDirectory("FlattenOrphanedLibRootNoCanon");
+
+        var containerDir = Directory.CreateDirectory(Path.Combine(libraryRoot, "Brooklyn Nine-Nine Moo Moo AAC5 1")).FullName;
+        var containerSeason = Directory.CreateDirectory(Path.Combine(containerDir, "Season 4")).FullName;
+        var episodeFile = CreateFile(containerSeason, "Brooklyn.Nine-Nine.S04E16.Moo.Moo.mkv");
+
+        var sut = CreateSut(new NormalizerConfig());
+
+        var containerItem = new MediaItem
+        {
+            Path = containerDir,
+            OriginalName = "Brooklyn Nine-Nine Moo Moo AAC5 1",
+            NormalizedName = "Brooklyn Nine-Nine Moo Moo AAC5 1",
+            Kind = MediaKind.TvSeries,
+            VideoFiles = [episodeFile],
+            SeasonFolders = [containerSeason]
+        };
+
+        var ops = await sut.FlattenOrphanedSeriesFoldersAsync(
+            [containerItem], libraryRoot, dryRun: true);
+
+        // Series title extracted from video filename should be "Brooklyn Nine-Nine"
+        var expectedDest = Path.Combine(libraryRoot, "Brooklyn Nine-Nine", "Season 4", Path.GetFileName(episodeFile));
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Move &&
+            op.Source == episodeFile &&
+            op.Destination == expectedDest);
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Delete &&
+            op.Source == containerDir);
+    }
+
+    [Fact]
+    public async Task FlattenOrphanedSeriesFoldersAsync_CanonicalSeriesFolder_IsNotMoved()
+    {
+        // A proper "Brooklyn Nine-Nine/Season 3/episode.mkv" folder must NOT be treated as a
+        // container and must not generate any move-away operations.
+        var libraryRoot = CreateDirectory("FlattenOrphanedLibRootCanonical");
+
+        var seriesDir = Directory.CreateDirectory(Path.Combine(libraryRoot, "Brooklyn Nine-Nine")).FullName;
+        var season3Dir = Directory.CreateDirectory(Path.Combine(seriesDir, "Season 3")).FullName;
+        var episodeFile = CreateFile(season3Dir, "Brooklyn.Nine-Nine.S03E01.Full.Boyle.mkv");
+
+        var sut = CreateSut(new NormalizerConfig());
+
+        var item = new MediaItem
+        {
+            Path = seriesDir,
+            OriginalName = "Brooklyn Nine-Nine",
+            NormalizedName = "Brooklyn Nine-Nine",
+            Kind = MediaKind.TvSeries,
+            VideoFiles = [episodeFile],
+            SeasonFolders = [season3Dir]
+        };
+
+        var ops = await sut.FlattenOrphanedSeriesFoldersAsync([item], libraryRoot, dryRun: true);
+
+        // The canonical folder must not have its episodes moved or be deleted
+        Assert.DoesNotContain(ops, op => op.Type == OperationType.Move && op.Source == episodeFile);
+        Assert.DoesNotContain(ops, op => op.Type == OperationType.Delete && op.Source == seriesDir);
+    }
+
     private SeriesMerger CreateSut(NormalizerConfig config)
     {
         var detector = new MediaFileDetector();

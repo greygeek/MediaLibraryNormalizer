@@ -207,6 +207,34 @@ public class SeriesMerger(
             }
         }
 
+        // Handle "episode-titled container" folders: a folder that the scanner classified as
+        // TvSeries (because it has a Season N subfolder) but whose folder name is actually an
+        // episode title rather than the series title. For example:
+        //
+        //   Brooklyn Nine-Nine Defense Rests AAC5 1/
+        //     Season 3/
+        //       Brooklyn.Nine-Nine.S03E12.Defense.Rests.1080p.mkv
+        //
+        // The episode belongs in {libraryRoot}/Brooklyn Nine-Nine/Season 3/ — we extract the
+        // series title from the video filename (not the folder name), move each video file to
+        // the correct destination, then delete the now-empty container tree.
+        //
+        // DistributeParsableVideoFilesAsync already handles the recursive VideoFiles list (which
+        // includes files inside Season N subfolders) together with the canonical-name lookup and
+        // cleanup, so we just invoke it here. For a legitimate canonical series folder (e.g. the
+        // real "Brooklyn Nine-Nine"), the derived destDir equals the source path, nothing moves,
+        // and DeleteVideoFreeFolderAsync sees videos remaining → no delete. Safe no-op.
+        foreach (var item in allItems.Where(item =>
+            item.Kind == MediaKind.TvSeries &&
+            item.SeasonFolders.Count > 0 &&
+            episodeParser.Parse(item.OriginalName) is null &&
+            item.VideoFiles.Count > 0 &&
+            Directory.Exists(item.Path)))
+        {
+            var ops = await DistributeParsableVideoFilesAsync(item, libraryRoot, allItems, dryRun);
+            allOperations.AddRange(ops);
+        }
+
         if (allOperations.Count > 0)
         {
             logger.LogInformation(
