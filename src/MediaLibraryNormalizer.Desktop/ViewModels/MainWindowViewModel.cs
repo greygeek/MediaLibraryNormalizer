@@ -76,6 +76,9 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool flattenEpisodeReleaseFolders;
 
     [ObservableProperty]
+    private bool useAiOrganizer;
+
+    [ObservableProperty]
     private bool isBusy;
 
     [ObservableProperty]
@@ -311,6 +314,12 @@ public partial class MainWindowViewModel : ViewModelBase
         SaveSettings();
     }
 
+    partial void OnUseAiOrganizerChanged(bool value)
+    {
+        InvalidateReviewApprovalWorkflow();
+        SaveSettings();
+    }
+
     partial void OnSelectedDuplicateGroupChanged(DuplicateGroupViewModel? value)
     {
         OnPropertyChanged(nameof(SelectedGroupTitle));
@@ -420,6 +429,7 @@ public partial class MainWindowViewModel : ViewModelBase
         DeleteNonEpisodeFiles = saved.DeleteNonEpisodeFiles;
         RenameNonStandardFiles = saved.RenameNonStandardFiles;
         FlattenEpisodeReleaseFolders = saved.FlattenEpisodeReleaseFolders;
+        UseAiOrganizer = saved.UseAiOrganizer;
 
         _settingsLoaded = true;
     }
@@ -448,6 +458,7 @@ public partial class MainWindowViewModel : ViewModelBase
         DeleteNonEpisodeFiles = DeleteNonEpisodeFiles,
         RenameNonStandardFiles = RenameNonStandardFiles,
         FlattenEpisodeReleaseFolders = FlattenEpisodeReleaseFolders,
+        UseAiOrganizer = UseAiOrganizer,
     };
 
     private void OnMissingEpisodeFinderPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -532,6 +543,7 @@ public partial class MainWindowViewModel : ViewModelBase
             DeleteNonEpisodeFiles = DeleteNonEpisodeFiles,
             RenameNonStandardFiles = RenameNonStandardFiles,
             FlattenEpisodeReleaseFolders = FlattenEpisodeReleaseFolders,
+            UseAiOrganizer = UseAiOrganizer,
             AiEndpoint = baseConfig.AiEndpoint,
             AiApiKey = baseConfig.AiApiKey,
             AiModel = baseConfig.AiModel,

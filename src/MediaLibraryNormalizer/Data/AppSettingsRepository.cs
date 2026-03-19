@@ -27,6 +27,7 @@ public sealed class AppSettingsRepository(AppDbContextFactory factory) : IAppSet
             DeleteNonEpisodeFiles     = rows.GetValueOrDefault("DeleteNonEpisodeFiles", "false") == "true",
             RenameNonStandardFiles    = rows.GetValueOrDefault("RenameNonStandardFiles", "false") == "true",
             FlattenEpisodeReleaseFolders = rows.GetValueOrDefault("FlattenEpisodeReleaseFolders", "false") == "true",
+            UseAiOrganizer = rows.GetValueOrDefault("UseAiOrganizer", "false") == "true",
         };
     }
 
@@ -52,6 +53,7 @@ public sealed class AppSettingsRepository(AppDbContextFactory factory) : IAppSet
             ["DeleteNonEpisodeFiles"]     = settings.DeleteNonEpisodeFiles ? "true" : "false",
             ["RenameNonStandardFiles"]    = settings.RenameNonStandardFiles ? "true" : "false",
             ["FlattenEpisodeReleaseFolders"] = settings.FlattenEpisodeReleaseFolders ? "true" : "false",
+            ["UseAiOrganizer"] = settings.UseAiOrganizer ? "true" : "false",
         };
 
         var existingKeys = await db.Settings

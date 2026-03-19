@@ -32,6 +32,9 @@ public class NormalizerConfig
     /// <summary>Whether to flatten per-episode release folders at library root into {Show}/Season {N}/ structure.</summary>
     public bool FlattenEpisodeReleaseFolders { get; set; }
 
+    /// <summary>Whether to use AI to organize video files that have no parseable episode token.</summary>
+    public bool UseAiOrganizer { get; set; }
+
     // --- CLI flags ---
 
     /// <summary>Preview mode — no filesystem changes (default true).</summary>

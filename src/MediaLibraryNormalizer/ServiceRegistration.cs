@@ -57,6 +57,15 @@ public static class ServiceRegistration
             services.AddSingleton<IAiResolver, NoOpAiResolver>();
         }
 
+        if (config.UseAiOrganizer)
+        {
+            services.AddHttpClient<IAiOrganizer, OpenAiOrganizer>();
+        }
+        else
+        {
+            services.AddSingleton<IAiOrganizer, NoOpAiOrganizer>();
+        }
+
         // Hashing
         services.AddSingleton<IMediaHasher, MediaHasher>();
 

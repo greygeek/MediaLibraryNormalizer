@@ -1,3 +1,4 @@
+using MediaLibraryNormalizer.AI;
 using MediaLibraryNormalizer.Config;
 using MediaLibraryNormalizer.Matching;
 using MediaLibraryNormalizer.Merging;
@@ -131,6 +132,41 @@ public class NormalizerRunner : INormalizerRunner
             cancellationToken.ThrowIfCancellationRequested();
             var episodeFlattenOps = await merger.FlattenEpisodeReleaseFoldersAsync(items, config.LibraryPath, config.DryRun);
             allOperations.AddRange(episodeFlattenOps);
+        }
+
+        if (config.UseAiOrganizer)
+        {
+            progress?.Report("AI-assisted file organization...");
+            cancellationToken.ThrowIfCancellationRequested();
+            var aiOrganizer = serviceProvider.GetRequiredService<IAiOrganizer>();
+
+            // Collect video files in small flat folders whose paths have no parseable episode token.
+            // Items already handled by flatten (folder name has episode token) will have been moved,
+            // so Directory.Exists guards against double-processing.
+            var nonConformingFiles = items
+                .Where(item =>
+                    item.SeasonFolders.Count == 0 &&
+                    item.VideoFiles.Count is >= 1 and <= 3 &&
+                    episodeParser.Parse(item.OriginalName) is null &&
+                    item.VideoFiles.All(vf => episodeParser.Parse(vf) is null) &&
+                    Directory.Exists(item.Path))
+                .SelectMany(item => item.VideoFiles)
+                .ToList();
+
+            if (nonConformingFiles.Count > 0)
+            {
+                logger.LogInformation("AI organizer: sending {Count} non-conforming video files", nonConformingFiles.Count);
+                var suggestions = await aiOrganizer.SuggestMovesAsync(config.LibraryPath, nonConformingFiles, cancellationToken);
+
+                foreach (var suggestion in suggestions)
+                {
+                    logger.LogInformation("{Action} via AI: {File} \u2192 {Dest}",
+                        config.DryRun ? "Would move" : "Moving",
+                        Path.GetFileName(suggestion.Source),
+                        Path.GetDirectoryName(suggestion.Destination));
+                    allOperations.AddRange(await fileMover.MoveFileAsync(suggestion.Source, suggestion.Destination, config.DryRun));
+                }
+            }
         }
 
         if (config.RenameNonStandardFiles)
@@ -306,6 +342,7 @@ public class NormalizerRunner : INormalizerRunner
             DeleteNonEpisodeFiles = config.DeleteNonEpisodeFiles,
             RenameNonStandardFiles = config.RenameNonStandardFiles,
             FlattenEpisodeReleaseFolders = config.FlattenEpisodeReleaseFolders,
+            UseAiOrganizer = config.UseAiOrganizer,
             DryRun = config.DryRun,
             Merge = config.Merge,
             ExactMatchesWithFilesOnly = config.ExactMatchesWithFilesOnly,

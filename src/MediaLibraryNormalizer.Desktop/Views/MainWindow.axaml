@@ -113,6 +113,7 @@
                         <CheckBox Content="Delete unparsed files" IsChecked="{Binding DeleteNonEpisodeFiles}" Margin="0,0,16,8"/>
                         <CheckBox Content="Rename non-standard filenames" IsChecked="{Binding RenameNonStandardFiles}" Margin="0,0,16,8"/>
                         <CheckBox Content="Flatten episode release folders" IsChecked="{Binding FlattenEpisodeReleaseFolders}" Margin="0,0,16,8"/>
+                        <CheckBox Content="AI-assisted file organization" IsChecked="{Binding UseAiOrganizer}" Margin="0,0,16,8"/>
                     </WrapPanel>
 
                     <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Margin="0,12,0,0" Text="{Binding LastRunSummary}" Opacity="0.75"/>

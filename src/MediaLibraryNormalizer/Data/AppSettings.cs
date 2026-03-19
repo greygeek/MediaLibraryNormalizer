@@ -43,4 +43,6 @@ public class AppSettings
     public bool RenameNonStandardFiles { get; set; }
 
     public bool FlattenEpisodeReleaseFolders { get; set; }
+
+    public bool UseAiOrganizer { get; set; }
 }
