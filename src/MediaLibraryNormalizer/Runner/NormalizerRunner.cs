@@ -132,6 +132,22 @@ public class NormalizerRunner : INormalizerRunner
             cancellationToken.ThrowIfCancellationRequested();
             var episodeFlattenOps = await merger.FlattenEpisodeReleaseFoldersAsync(items, config.LibraryPath, config.DryRun);
             allOperations.AddRange(episodeFlattenOps);
+
+            progress?.Report("Flattening orphaned series folders...");
+            cancellationToken.ThrowIfCancellationRequested();
+            // Re-scan so earlier moves are reflected in the items list
+            var refreshedItems = scanner.Scan(config.LibraryPath).ToList();
+            foreach (var refreshed in refreshedItems)
+            {
+                var normalized = refreshed.IsUnpackFolder
+                    ? normalizer.NormalizeUnpackFolder(refreshed.OriginalName)
+                    : normalizer.Normalize(refreshed.OriginalName);
+                refreshed.NormalizedName = normalized.Title;
+                refreshed.Year = normalized.Year;
+                refreshed.Kind = ClassifyMediaKind(refreshed, episodeParser);
+            }
+            var orphanFlattenOps = await merger.FlattenOrphanedSeriesFoldersAsync(refreshedItems, config.LibraryPath, config.DryRun);
+            allOperations.AddRange(orphanFlattenOps);
         }
 
         if (config.UseAiOrganizer)

@@ -33,4 +33,14 @@ public interface ISeriesMerger
     /// </summary>
     Task<List<MergeOperation>> FlattenEpisodeReleaseFoldersAsync(
         IEnumerable<MediaItem> items, string libraryRoot, bool dryRun);
+
+    /// <summary>
+    /// Handle flat folders at the library root that have no S##E## token in the folder name:
+    /// <list type="bullet">
+    ///   <item>Folders whose video files DO have S##E## tokens are distributed to the correct season sub-folder.</item>
+    ///   <item>Folders with no S##E## anywhere are matched against existing series by name prefix and moved to Season 0.</item>
+    /// </list>
+    /// </summary>
+    Task<List<MergeOperation>> FlattenOrphanedSeriesFoldersAsync(
+        IEnumerable<MediaItem> items, string libraryRoot, bool dryRun);
 }

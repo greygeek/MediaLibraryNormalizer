@@ -141,6 +141,157 @@ public class SeriesMerger(
         return allOperations;
     }
 
+    public async Task<List<MergeOperation>> FlattenOrphanedSeriesFoldersAsync(
+        IEnumerable<MediaItem> items, string libraryRoot, bool dryRun)
+    {
+        var allItems = items.ToList();
+        var allOperations = new List<MergeOperation>();
+
+        // Established series folders — those that already have a proper Season N structure
+        var establishedSeries = allItems
+            .Where(static i => i.Kind == MediaKind.TvSeries && i.SeasonFolders.Count > 0)
+            .ToList();
+
+        // Candidates: no season sub-structure, no S##E## in the folder name itself
+        // (folders whose name has S##E## are already handled by FlattenEpisodeReleaseFoldersAsync)
+        foreach (var item in allItems.Where(item =>
+            item.SeasonFolders.Count == 0 &&
+            episodeParser.Parse(item.OriginalName) is null &&
+            item.VideoFiles.Count > 0 &&
+            Directory.Exists(item.Path)))
+        {
+            if (item.Kind == MediaKind.TvSeries)
+            {
+                // The video files have parseable S##E## tokens — distribute them to Season N
+                var ops = await DistributeParsableVideoFilesAsync(item, libraryRoot, dryRun);
+                allOperations.AddRange(ops);
+            }
+            else
+            {
+                // No S##E## anywhere — match by series name prefix and route to Season 0
+                var matchingSeries = FindSeriesByPrefix(item.NormalizedName, establishedSeries);
+                if (matchingSeries is null)
+                    continue;
+
+                var destDir = Path.Combine(matchingSeries.Path, "Season 0");
+
+                foreach (var videoFile in item.VideoFiles.Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    var destFile = Path.Combine(destDir, Path.GetFileName(videoFile));
+                    if (string.Equals(videoFile, destFile, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (!dryRun && File.Exists(destFile))
+                        continue;
+
+                    logger.LogInformation("{Action} orphaned episode file: {File} \u2192 {Dest}",
+                        dryRun ? "Would move" : "Moving",
+                        Path.GetFileName(videoFile), destDir);
+
+                    allOperations.AddRange(await fileMover.MoveFileAsync(videoFile, destFile, dryRun));
+                }
+
+                allOperations.AddRange(await DeleteMovieArtifactFilesAsync(item.Path, dryRun));
+
+                if (CanDeleteMergedFolder(item.Path, allOperations, dryRun))
+                {
+                    var deleteOp = new MergeOperation(item.Path, string.Empty, OperationType.Delete, dryRun);
+                    allOperations.Add(deleteOp);
+
+                    if (!dryRun)
+                    {
+                        DeleteDirectoryRobust(item.Path);
+                        await transactionLog.LogAsync(deleteOp);
+                    }
+                }
+            }
+        }
+
+        if (allOperations.Count > 0)
+        {
+            logger.LogInformation(
+                "Total orphaned series folder operations: {Count} (dryRun={DryRun})",
+                allOperations.Count,
+                dryRun);
+        }
+
+        return allOperations;
+    }
+
+    private async Task<List<MergeOperation>> DistributeParsableVideoFilesAsync(
+        MediaItem item, string libraryRoot, bool dryRun)
+    {
+        var ops = new List<MergeOperation>();
+
+        foreach (var videoFile in item.VideoFiles.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var parsed = episodeParser.Parse(videoFile);
+            if (parsed is null)
+                continue;
+
+            // Get series title from the video filename (text before the S##E## token),
+            // falling back to the folder's normalized name if extraction fails.
+            var seriesTitle = episodeParser.ExtractSeriesTitle(Path.GetFileNameWithoutExtension(videoFile))
+                              ?? item.NormalizedName;
+
+            if (string.IsNullOrWhiteSpace(seriesTitle))
+                continue;
+
+            var destDir = Path.Combine(libraryRoot, seriesTitle, $"Season {parsed.Season}");
+            var destFile = Path.Combine(destDir, Path.GetFileName(videoFile));
+
+            if (string.Equals(videoFile, destFile, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!dryRun && File.Exists(destFile))
+                continue;
+
+            logger.LogInformation("{Action} flat TV folder file: {File} \u2192 {Dest}",
+                dryRun ? "Would move" : "Moving",
+                Path.GetFileName(videoFile), destDir);
+
+            ops.AddRange(await fileMover.MoveFileAsync(videoFile, destFile, dryRun));
+        }
+
+        ops.AddRange(await DeleteMovieArtifactFilesAsync(item.Path, dryRun));
+
+        if (CanDeleteMergedFolder(item.Path, ops, dryRun))
+        {
+            var deleteOp = new MergeOperation(item.Path, string.Empty, OperationType.Delete, dryRun);
+            ops.Add(deleteOp);
+
+            if (!dryRun)
+            {
+                DeleteDirectoryRobust(item.Path);
+                await transactionLog.LogAsync(deleteOp);
+            }
+        }
+
+        return ops;
+    }
+
+    /// <summary>
+    /// Returns the established series whose normalized name is the longest prefix of
+    /// <paramref name="normalizedFolderName"/>, treating hyphens and spaces as equivalent.
+    /// </summary>
+    private static MediaItem? FindSeriesByPrefix(string normalizedFolderName, IReadOnlyList<MediaItem> establishedSeries)
+    {
+        if (string.IsNullOrWhiteSpace(normalizedFolderName))
+            return null;
+
+        var needle = normalizedFolderName.ToLowerInvariant().Replace('-', ' ');
+
+        return establishedSeries
+            .Where(static s => !string.IsNullOrWhiteSpace(s.NormalizedName))
+            .OrderByDescending(static s => s.NormalizedName.Length) // longest (most specific) match wins
+            .FirstOrDefault(s =>
+            {
+                var haystack = s.NormalizedName.ToLowerInvariant().Replace('-', ' ');
+                if (needle.Length <= haystack.Length)
+                    return false;
+                return needle.StartsWith(haystack, StringComparison.Ordinal)
+                    && (needle[haystack.Length] == ' ' || needle[haystack.Length] == '.');
+            });
+    }
+
     public async Task<List<MergeOperation>> DeduplicateTopLevelMovieFilesAsync(string libraryRoot, bool dryRun)
     {
         var operations = new List<MergeOperation>();
