@@ -620,8 +620,18 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                 ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Deleted: {series.FolderPath}");
             }
 
+            // Capture the current position in the filtered list before modifying the collection,
+            // so we can restore focus to the next item rather than jumping to the top.
+            var filteredBefore = FilteredSeries.ToList();
+            var deletedIndex = filteredBefore.IndexOf(series);
+            if (deletedIndex < 0) deletedIndex = 0;
+
             Series.Remove(series);
-            SelectedSeries = FilteredSeries.FirstOrDefault();
+
+            // Select the item that was immediately after the deleted one, falling back to
+            // the new last item, so the user's scroll position is preserved.
+            var filteredAfter = FilteredSeries.ToList();
+            SelectedSeries = filteredAfter.Count > 0 ? filteredAfter[Math.Min(deletedIndex, filteredAfter.Count - 1)] : null;
 
             if (_repository is not null && _lastRunResult is not null)
             {
