@@ -1,6 +1,7 @@
 # Build outputs
 bin/
 obj/
+publish/
 
 # VS / VS Code
 .vs/
