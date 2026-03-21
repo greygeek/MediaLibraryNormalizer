@@ -11,7 +11,7 @@ namespace MediaLibraryNormalizer.Audit;
 /// <see cref="ICatalogCache"/>. Uses <see cref="AppDbContextFactory"/> for short-lived
 /// unit-of-work contexts; schema initialisation is handled by the factory.
 /// </summary>
-public sealed class SqliteAuditRepository(AppDbContextFactory factory) : IAuditRepository, ICatalogCache
+public sealed class SqliteAuditRepository(AppDbContextFactory factory) : IAuditRepository, ICatalogCache, INzbDownloadHistory
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -108,6 +108,92 @@ public sealed class SqliteAuditRepository(AppDbContextFactory factory) : IAuditR
             existing.SeriesJson = json;
         }
 
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<NzbDownloadAttempt>> GetAttemptsAsync(
+        string libraryPath,
+        string normalizedSeriesTitle,
+        int? seriesYear,
+        string episodeKey,
+        CancellationToken ct = default)
+    {
+        await using var db = factory.Create();
+        var seriesIdentityKey = NzbReleaseIdentity.GetSeriesIdentityKey(normalizedSeriesTitle, seriesYear);
+
+        return await db.NzbDownloadAttempts
+            .Where(a => a.LibraryPath == libraryPath
+                && a.SeriesIdentityKey == seriesIdentityKey
+                && a.EpisodeKey == episodeKey)
+            .OrderByDescending(a => a.AttemptedAt)
+            .Select(a => new NzbDownloadAttempt(
+                a.ReleaseKey,
+                a.ReleaseTitle,
+                a.NzbId,
+                a.SabNzoId,
+                DateTimeOffset.Parse(a.AttemptedAt, null, System.Globalization.DateTimeStyles.RoundtripKind)))
+            .ToListAsync(ct);
+    }
+
+    public async Task RecordAttemptAsync(
+        string libraryPath,
+        string normalizedSeriesTitle,
+        int? seriesYear,
+        string episodeKey,
+        NzbSearchResult result,
+        string? sabNzoId = null,
+        CancellationToken ct = default)
+    {
+        await using var db = factory.Create();
+        var seriesIdentityKey = NzbReleaseIdentity.GetSeriesIdentityKey(normalizedSeriesTitle, seriesYear);
+        var releaseKey = NzbReleaseIdentity.GetReleaseKey(result);
+
+        var exists = await db.NzbDownloadAttempts.AnyAsync(a =>
+            a.LibraryPath == libraryPath
+            && a.SeriesIdentityKey == seriesIdentityKey
+            && a.EpisodeKey == episodeKey
+            && a.ReleaseKey == releaseKey,
+            ct);
+
+        if (exists)
+            return;
+
+        db.NzbDownloadAttempts.Add(new NzbDownloadAttemptEntity
+        {
+            LibraryPath = libraryPath,
+            SeriesIdentityKey = seriesIdentityKey,
+            EpisodeKey = episodeKey,
+            ReleaseKey = releaseKey,
+            ReleaseTitle = result.Title,
+            NzbId = string.IsNullOrWhiteSpace(result.NzbId) ? null : result.NzbId,
+            SabNzoId = string.IsNullOrWhiteSpace(sabNzoId) ? null : sabNzoId,
+            DownloadUrl = string.IsNullOrWhiteSpace(result.DownloadUrl) ? null : result.DownloadUrl,
+            AttemptedAt = DateTime.UtcNow.ToString("O")
+        });
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task ClearAttemptsAsync(
+        string libraryPath,
+        string normalizedSeriesTitle,
+        int? seriesYear,
+        string episodeKey,
+        CancellationToken ct = default)
+    {
+        await using var db = factory.Create();
+        var seriesIdentityKey = NzbReleaseIdentity.GetSeriesIdentityKey(normalizedSeriesTitle, seriesYear);
+
+        var rows = await db.NzbDownloadAttempts
+            .Where(a => a.LibraryPath == libraryPath
+                && a.SeriesIdentityKey == seriesIdentityKey
+                && a.EpisodeKey == episodeKey)
+            .ToListAsync(ct);
+
+        if (rows.Count == 0)
+            return;
+
+        db.NzbDownloadAttempts.RemoveRange(rows);
         await db.SaveChangesAsync(ct);
     }
 }

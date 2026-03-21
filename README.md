@@ -79,6 +79,12 @@ Important settings:
 - `AiEndpoint`
 - `AiApiKey`
 - `AiModel`
+- `TheTvdbApiKey`
+- `NzbApiKey`
+- `NzbWatchFolder`
+- `NzbCategory`
+- `SabnzbdUrl`
+- `SabnzbdApiKey`
 
 For AI authentication, prefer the `NORMALIZER_AI_KEY` environment variable over putting secrets in config.
 

@@ -91,4 +91,10 @@ public class NormalizerConfig
 
     /// <summary>SABnzbd category injected into the NZB XML (optional, e.g. "TV").</summary>
     public string? NzbCategory { get; set; }
+
+    /// <summary>SABnzbd base URL used to query queue/history state (optional).</summary>
+    public string? SabnzbdUrl { get; set; }
+
+    /// <summary>SABnzbd full API key from Config → General (optional).</summary>
+    public string? SabnzbdApiKey { get; set; }
 }

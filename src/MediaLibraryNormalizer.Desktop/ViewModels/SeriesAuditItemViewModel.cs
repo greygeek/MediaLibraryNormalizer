@@ -85,6 +85,11 @@ public class SeriesAuditItemViewModel
 
     public bool HasMissingEpisodes => Item.MissingEpisodeCount > 0;
 
+    public bool HasOnlySeasonZeroMissingEpisodes =>
+        Item.MissingEpisodeCount > 0
+        && Item.MissingEpisodeKeys.Count > 0
+        && Item.MissingEpisodeKeys.All(static key => key.StartsWith("S00", StringComparison.OrdinalIgnoreCase));
+
     public bool HasMetadata =>
         Item.CatalogStatus == CatalogLookupStatus.Matched
         && (!string.IsNullOrWhiteSpace(Item.CatalogSummary)

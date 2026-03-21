@@ -383,6 +383,10 @@ public partial class MainWindowViewModel : ViewModelBase
             MissingEpisodeFinder.NzbWatchFolder = config.NzbWatchFolder;
         if (!string.IsNullOrWhiteSpace(config.NzbCategory))
             MissingEpisodeFinder.NzbCategory = config.NzbCategory;
+        if (!string.IsNullOrWhiteSpace(config.SabnzbdUrl))
+            MissingEpisodeFinder.SabnzbdUrl = config.SabnzbdUrl;
+        if (!string.IsNullOrWhiteSpace(config.SabnzbdApiKey))
+            MissingEpisodeFinder.SabnzbdApiKey = config.SabnzbdApiKey;
         _hasFreshPreview = false;
     }
 
@@ -415,10 +419,15 @@ public partial class MainWindowViewModel : ViewModelBase
             MissingEpisodeFinder.NzbWatchFolder = saved.NzbWatchFolder;
         if (!string.IsNullOrWhiteSpace(saved.NzbCategory))
             MissingEpisodeFinder.NzbCategory = saved.NzbCategory;
+        if (!string.IsNullOrWhiteSpace(saved.SabnzbdUrl))
+            MissingEpisodeFinder.SabnzbdUrl = saved.SabnzbdUrl;
+        if (!string.IsNullOrWhiteSpace(saved.SabnzbdApiKey))
+            MissingEpisodeFinder.SabnzbdApiKey = saved.SabnzbdApiKey;
         if (Enum.TryParse<MediaLibraryNormalizer.Audit.CatalogProviderKind>(saved.CatalogProvider, out var provider))
             MissingEpisodeFinder.SelectedCatalogProvider = provider;
 
         MissingEpisodeFinder.IncludeSpecials = saved.IncludeSpecials;
+        MissingEpisodeFinder.ExcludeSeasonZeroOnlyMissingSeries = saved.ExcludeSeasonZeroOnlyMissingSeries;
         MissingEpisodeFinder.Verbose = saved.Verbose;
         Verbose = saved.Verbose;
         ExactMatchesWithFilesOnly = saved.ExactMatchesWithFilesOnly;
@@ -447,8 +456,11 @@ public partial class MainWindowViewModel : ViewModelBase
         NzbApiKey = MissingEpisodeFinder.NzbApiKey,
         NzbWatchFolder = MissingEpisodeFinder.NzbWatchFolder,
         NzbCategory = MissingEpisodeFinder.NzbCategory,
+        SabnzbdUrl = MissingEpisodeFinder.SabnzbdUrl,
+        SabnzbdApiKey = MissingEpisodeFinder.SabnzbdApiKey,
         CatalogProvider = MissingEpisodeFinder.SelectedCatalogProvider.ToString(),
         IncludeSpecials = MissingEpisodeFinder.IncludeSpecials,
+        ExcludeSeasonZeroOnlyMissingSeries = MissingEpisodeFinder.ExcludeSeasonZeroOnlyMissingSeries,
         Verbose = Verbose,
         ExactMatchesWithFilesOnly = ExactMatchesWithFilesOnly,
         DiscardInferiorDuplicates = DiscardInferiorDuplicates,
@@ -468,8 +480,11 @@ public partial class MainWindowViewModel : ViewModelBase
             nameof(MissingEpisodeFinderViewModel.NzbApiKey) or
             nameof(MissingEpisodeFinderViewModel.NzbWatchFolder) or
             nameof(MissingEpisodeFinderViewModel.NzbCategory) or
+            nameof(MissingEpisodeFinderViewModel.SabnzbdUrl) or
+            nameof(MissingEpisodeFinderViewModel.SabnzbdApiKey) or
             nameof(MissingEpisodeFinderViewModel.SelectedCatalogProvider) or
-            nameof(MissingEpisodeFinderViewModel.IncludeSpecials))
+            nameof(MissingEpisodeFinderViewModel.IncludeSpecials) or
+            nameof(MissingEpisodeFinderViewModel.ExcludeSeasonZeroOnlyMissingSeries))
         {
             SaveSettings();
         }

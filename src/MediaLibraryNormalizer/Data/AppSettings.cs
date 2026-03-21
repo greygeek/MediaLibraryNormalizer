@@ -18,9 +18,15 @@ public class AppSettings
 
     public string NzbCategory { get; set; } = string.Empty;
 
+    public string SabnzbdUrl { get; set; } = string.Empty;
+
+    public string SabnzbdApiKey { get; set; } = string.Empty;
+
     public string CatalogProvider { get; set; } = "None";
 
     public bool IncludeSpecials { get; set; }
+
+    public bool ExcludeSeasonZeroOnlyMissingSeries { get; set; }
 
     // ── Shared flags ─────────────────────────────────────────────────────────
 

@@ -159,10 +159,24 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
     /// Picks the best result from a search response: prefers H265/x265/HEVC releases,
     /// falls back to the first result if none match.
     /// </summary>
-    public static NzbSearchResult? SelectPreferred(IReadOnlyList<NzbSearchResult> results)
+    public static NzbSearchResult? SelectPreferred(
+        IReadOnlyList<NzbSearchResult> results,
+        IReadOnlyCollection<string>? excludedReleaseKeys = null)
     {
-        if (results.Count == 0) return null;
-        return results.FirstOrDefault(static r => IsH265(r.Title)) ?? results[0];
+        if (results.Count == 0)
+            return null;
+
+        var candidates = excludedReleaseKeys is not { Count: > 0 }
+            ? results
+            : results
+                .Where(result => !NzbReleaseIdentity.GetComparableReleaseKeys(result)
+                    .Any(excludedReleaseKeys.Contains))
+                .ToList();
+
+        if (candidates.Count == 0)
+            return null;
+
+        return candidates.FirstOrDefault(static r => IsH265(r.Title)) ?? candidates[0];
     }
 
     public static bool HasH265(IReadOnlyList<NzbSearchResult> results) =>

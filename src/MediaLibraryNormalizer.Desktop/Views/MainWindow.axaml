@@ -375,7 +375,7 @@
                                     <Button DockPanel.Dock="Right" Margin="6,0,0,0"
                                             Command="{Binding MissingEpisodeFinder.CheckUsenetCommand}"
                                             Content="Check Usenet"
-                                            IsVisible="{Binding MissingEpisodeFinder.IsNzbConfigured}"/>
+                                            IsVisible="{Binding MissingEpisodeFinder.IsNzbSearchConfigured}"/>
                                     <TextBox Text="{Binding MissingEpisodeFinder.NzbApiKey}" PasswordChar="&#x2022;" Watermark="nzbplanet.net (optional)"/>
                                 </DockPanel>
                             </StackPanel>
@@ -387,6 +387,25 @@
                                 <TextBlock Text="SABnzbd Category" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                 <TextBox Text="{Binding MissingEpisodeFinder.NzbCategory}" Watermark="e.g. TV (optional)"/>
                             </StackPanel>
+                            <StackPanel Margin="0,0,16,8">
+                                <TextBlock Text="SABnzbd URL" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                <TextBox Text="{Binding MissingEpisodeFinder.SabnzbdUrl}" Watermark="e.g. http://localhost:8080"/>
+                            </StackPanel>
+                            <StackPanel Margin="0,0,16,8">
+                                <TextBlock Text="SABnzbd API Key" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                <TextBox Text="{Binding MissingEpisodeFinder.SabnzbdApiKey}" PasswordChar="&#x2022;" Watermark="Config → General API key (optional)"/>
+                            </StackPanel>
+                            <Border Margin="0,0,16,8"
+                                    Padding="12,8"
+                                    CornerRadius="12"
+                                    BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                                    BorderThickness="1"
+                                    Background="{DynamicResource ThemeControlLowBrush}">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="{Binding MissingEpisodeFinder.QueueModeStatusText}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{Binding MissingEpisodeFinder.QueueModeStatusDetail}" FontSize="12" Opacity="0.72" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
                             <CheckBox Content="Verbose logging" IsChecked="{Binding MissingEpisodeFinder.Verbose}" Margin="0,0,16,8"/>
                             <CheckBox Content="Include specials" IsChecked="{Binding MissingEpisodeFinder.IncludeSpecials}" Margin="0,0,16,8"/>
                         </WrapPanel>
@@ -396,10 +415,11 @@
                 <!-- Series list + detail: independently scrollable, fills available height -->
                 <Grid Grid.Row="2" ColumnDefinitions="2*,3*" ColumnSpacing="16" MinHeight="0">
                     <Border Grid.Column="0" Padding="8" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1" MinHeight="0">
-                        <Grid RowDefinitions="Auto,Auto,*">
+                        <Grid RowDefinitions="Auto,Auto,Auto,*">
                             <TextBlock Grid.Row="0" Text="Series Inventory" Margin="8" FontSize="18" FontWeight="Bold"/>
                             <CheckBox Grid.Row="1" Margin="8,0,8,8" Content="Show only series with missing episodes" IsChecked="{Binding MissingEpisodeFinder.ShowOnlyMissingEpisodes}"/>
-                            <ListBox x:Name="SeriesListBox" Grid.Row="2" MinHeight="0" ScrollViewer.VerticalScrollBarVisibility="Auto" ItemsSource="{Binding MissingEpisodeFinder.FilteredSeries}" SelectedItem="{Binding MissingEpisodeFinder.SelectedSeries}">
+                            <CheckBox Grid.Row="2" Margin="8,0,8,8" Content="Exclude series with only season 00 missing episodes" IsChecked="{Binding MissingEpisodeFinder.ExcludeSeasonZeroOnlyMissingSeries}"/>
+                            <ListBox x:Name="SeriesListBox" Grid.Row="3" MinHeight="0" ScrollViewer.VerticalScrollBarVisibility="Auto" ItemsSource="{Binding MissingEpisodeFinder.FilteredSeries}" SelectedItem="{Binding MissingEpisodeFinder.SelectedSeries}">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate x:DataType="vm:SeriesAuditItemViewModel">
                                         <Border Margin="4" Padding="8" CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
@@ -422,98 +442,165 @@
                     </Border>
 
                     <Border Grid.Column="1" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1" MinHeight="0">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel Spacing="12">
-                                <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesTitle}" FontSize="22" FontWeight="Bold" TextWrapping="Wrap"/>
+                        <TabControl SelectedIndex="{Binding MissingEpisodeFinder.SelectedInspectorTabIndex}">
+                            <TabItem Header="Episode Details">
+                                <ScrollViewer Margin="0,12,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                    <StackPanel Spacing="12">
+                                        <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesTitle}" FontSize="22" FontWeight="Bold" TextWrapping="Wrap"/>
 
-                                <!-- Per-series action buttons -->
-                                <WrapPanel Orientation="Horizontal">
-                                    <Button Margin="0,0,8,4"
-                                            Command="{Binding MissingEpisodeFinder.QueueMissingDownloadsCommand}"
-                                            Content="Queue Missing Downloads"
-                                            ToolTip.Tip="{Binding MissingEpisodeFinder.QueueMissingDownloadsToolTip}"/>
-                                    <Button Margin="0,0,0,4"
-                                            Command="{Binding MissingEpisodeFinder.PendingDeleteSeriesCommand}"
-                                            IsVisible="{Binding MissingEpisodeFinder.IsPendingDelete, Converter={x:Static BoolConverters.Not}}"
-                                            Content="Delete Series"
-                                            ToolTip.Tip="Permanently delete all files and folders for this series and remove it from the database"/>
-                                </WrapPanel>
-
-                                <!-- Delete confirmation banner -->
-                                <Border IsVisible="{Binding MissingEpisodeFinder.IsPendingDelete}"
-                                        Padding="12" CornerRadius="10"
-                                        BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1"
-                                        Background="#40E04444">
-                                    <StackPanel Spacing="8">
-                                        <TextBlock Text="This will permanently delete all files and folders on disk and cannot be undone."
-                                                   FontWeight="SemiBold" TextWrapping="Wrap"/>
                                         <WrapPanel Orientation="Horizontal">
-                                            <Button Margin="0,0,8,0"
-                                                    Command="{Binding MissingEpisodeFinder.ConfirmDeleteSeriesCommand}"
-                                                    Content="Confirm Delete"/>
-                                            <Button Command="{Binding MissingEpisodeFinder.CancelDeleteSeriesCommand}"
-                                                    Content="Cancel"/>
+                                            <Button Margin="0,0,8,4"
+                                                    Command="{Binding MissingEpisodeFinder.QueueMissingDownloadsCommand}"
+                                                    Content="Queue Missing Downloads"
+                                                    ToolTip.Tip="{Binding MissingEpisodeFinder.QueueMissingDownloadsToolTip}"/>
+                                            <Button Margin="0,0,0,4"
+                                                    Command="{Binding MissingEpisodeFinder.PendingDeleteSeriesCommand}"
+                                                    IsVisible="{Binding MissingEpisodeFinder.IsPendingDelete, Converter={x:Static BoolConverters.Not}}"
+                                                    Content="Delete Series"
+                                                    ToolTip.Tip="Permanently delete all files and folders for this series and remove it from the database"/>
                                         </WrapPanel>
+
+                                        <Border IsVisible="{Binding MissingEpisodeFinder.IsPendingDelete}"
+                                                Padding="12" CornerRadius="10"
+                                                BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1"
+                                                Background="#40E04444">
+                                            <StackPanel Spacing="8">
+                                                <TextBlock Text="This will permanently delete all files and folders on disk and cannot be undone."
+                                                           FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                                <WrapPanel Orientation="Horizontal">
+                                                    <Button Margin="0,0,8,0"
+                                                            Command="{Binding MissingEpisodeFinder.ConfirmDeleteSeriesCommand}"
+                                                            Content="Confirm Delete"/>
+                                                    <Button Command="{Binding MissingEpisodeFinder.CancelDeleteSeriesCommand}"
+                                                            Content="Cancel"/>
+                                                </WrapPanel>
+                                            </StackPanel>
+                                        </Border>
+                                        <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesSummary}" Opacity="0.78" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesCatalogSummary}" Opacity="0.78" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesMissingSummary}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                        <Border Padding="12" CornerRadius="10" Background="{DynamicResource ThemeControlLowBrush}" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.HasMetadata, FallbackValue=False}">
+                                            <StackPanel Spacing="6">
+                                                <WrapPanel>
+                                                    <TextBlock Margin="0,0,8,0" Text="{Binding MissingEpisodeFinder.SelectedSeries.RatingText}" FontWeight="SemiBold" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.RatingText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                    <TextBlock Margin="0,0,8,0" Text="{Binding MissingEpisodeFinder.SelectedSeries.Network}" Opacity="0.8" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.Network, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                    <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeries.SeriesStatus}" Opacity="0.8" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.SeriesStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                </WrapPanel>
+                                                <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeries.GenreText}" FontSize="12" Opacity="0.72" TextWrapping="Wrap" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.GenreText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeries.CatalogSummaryText}" FontSize="12" Opacity="0.75" TextWrapping="Wrap" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.CatalogSummaryText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                            </StackPanel>
+                                        </Border>
+                                        <TextBlock Text="Episode Preview" FontSize="16" FontWeight="Bold" Margin="0,4,0,0"/>
+                                        <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesEpisodePreview}" TextWrapping="Wrap"/>
+                                        <Border Padding="12" CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                                            <StackPanel Spacing="4">
+                                                <TextBlock Text="Missing Episodes" FontWeight="Bold"/>
+                                                <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesMissingEpisodePreview}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Padding="12" CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1"
+                                                IsVisible="{Binding MissingEpisodeFinder.HasNzbResults}">
+                                            <StackPanel Spacing="6">
+                                                <TextBlock Text="Usenet Availability" FontWeight="Bold"/>
+                                                <ItemsControl ItemsSource="{Binding MissingEpisodeFinder.NzbResults}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:NzbEpisodeResultViewModel">
+                                                            <StackPanel Margin="0,2" Spacing="2">
+                                                                <DockPanel>
+                                                                    <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}" FontWeight="SemiBold" HorizontalAlignment="Right"/>
+                                                                    <TextBlock Text="{Binding DisplayLabel}" TextWrapping="Wrap"/>
+                                                                </DockPanel>
+                                                                <DockPanel>
+                                                                    <Button DockPanel.Dock="Right"
+                                                                        Margin="8,0,0,0"
+                                                                        Padding="8,2"
+                                                                        Content="Retry Failed SAB Job"
+                                                                        Command="{Binding RetryFailedSabCommand}"
+                                                                        IsVisible="{Binding CanRetryFailedSabJob}"/>
+                                                                    <Button DockPanel.Dock="Right"
+                                                                            Margin="8,0,0,0"
+                                                                            Padding="8,2"
+                                                                            Content="Clear Local History"
+                                                                            Command="{Binding ClearAttemptHistoryCommand}"
+                                                                            IsVisible="{Binding CanClearAttemptHistory}"/>
+                                                                    <TextBlock Text="{Binding HistoryText}" FontSize="12" Opacity="0.72"
+                                                                               IsVisible="{Binding HasHistoryText}" TextWrapping="Wrap"/>
+                                                                </DockPanel>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Padding="12" CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                                            <StackPanel Spacing="4">
+                                                <TextBlock Text="Unparseable Files" FontWeight="Bold"/>
+                                                <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesUnparseableSummary}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
                                     </StackPanel>
-                                </Border>
-                                <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesSummary}" Opacity="0.78" TextWrapping="Wrap"/>
-                                <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesCatalogSummary}" Opacity="0.78" TextWrapping="Wrap"/>
-                                <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesMissingSummary}" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                                <Border Padding="12" CornerRadius="10" Background="{DynamicResource ThemeControlLowBrush}" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.HasMetadata, FallbackValue=False}">
-                                    <StackPanel Spacing="6">
-                                        <WrapPanel>
-                                            <TextBlock Margin="0,0,8,0" Text="{Binding MissingEpisodeFinder.SelectedSeries.RatingText}" FontWeight="SemiBold" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.RatingText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                            <TextBlock Margin="0,0,8,0" Text="{Binding MissingEpisodeFinder.SelectedSeries.Network}" Opacity="0.8" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.Network, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                            <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeries.SeriesStatus}" Opacity="0.8" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.SeriesStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                        </WrapPanel>
-                                        <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeries.GenreText}" FontSize="12" Opacity="0.72" TextWrapping="Wrap" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.GenreText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                        <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeries.CatalogSummaryText}" FontSize="12" Opacity="0.75" TextWrapping="Wrap" IsVisible="{Binding MissingEpisodeFinder.SelectedSeries.CatalogSummaryText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                    </StackPanel>
-                                </Border>
-                                <TextBlock Text="Episode Preview" FontSize="16" FontWeight="Bold" Margin="0,4,0,0"/>
-                                <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesEpisodePreview}" TextWrapping="Wrap"/>
-                                <Border Padding="12" CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                                    <StackPanel Spacing="4">
-                                        <TextBlock Text="Missing Episodes" FontWeight="Bold"/>
-                                        <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesMissingEpisodePreview}" TextWrapping="Wrap"/>
-                                    </StackPanel>
-                                </Border>
-                                <Border Padding="12" CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1"
-                                        IsVisible="{Binding MissingEpisodeFinder.HasNzbResults}">
-                                    <StackPanel Spacing="6">
-                                        <TextBlock Text="Usenet Availability" FontWeight="Bold"/>
-                                        <ItemsControl ItemsSource="{Binding MissingEpisodeFinder.NzbResults}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate x:DataType="vm:NzbEpisodeResultViewModel">
-                                                    <DockPanel Margin="0,2">
-                                                        <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}" FontWeight="SemiBold" HorizontalAlignment="Right"/>
-                                                        <TextBlock Text="{Binding DisplayLabel}" TextWrapping="Wrap"/>
-                                                    </DockPanel>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </StackPanel>
-                                </Border>
-                                <Border Padding="12" CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                                    <StackPanel Spacing="4">
-                                        <TextBlock Text="Unparseable Files" FontWeight="Bold"/>
-                                        <TextBlock Text="{Binding MissingEpisodeFinder.SelectedSeriesUnparseableSummary}" TextWrapping="Wrap"/>
-                                    </StackPanel>
-                                </Border>
-                                <Border Padding="12" CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                                    <StackPanel Spacing="4">
-                                        <TextBlock Text="Activity" FontWeight="Bold"/>
-                                        <ItemsControl ItemsSource="{Binding MissingEpisodeFinder.ActivityLog}"/>
-                                    </StackPanel>
-                                </Border>
-                                <Border Padding="12" CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                                    <StackPanel Spacing="4">
-                                        <TextBlock Text="Errors" FontWeight="Bold"/>
-                                        <ItemsControl ItemsSource="{Binding MissingEpisodeFinder.Errors}"/>
-                                    </StackPanel>
-                                </Border>
-                            </StackPanel>
-                        </ScrollViewer>
+                                </ScrollViewer>
+                            </TabItem>
+
+                            <TabItem Header="Activity Log">
+                                <Grid Margin="0,12,0,0" RowDefinitions="Auto,*" RowSpacing="12" MinHeight="0">
+                                    <DockPanel Grid.Row="0">
+                                        <TextBlock DockPanel.Dock="Left" Text="Recent audit and queue activity" Opacity="0.72" VerticalAlignment="Center"/>
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="12">
+                                            <CheckBox Content="Follow tail"
+                                                      IsChecked="{Binding MissingEpisodeFinder.FollowActivityLogTail}"/>
+                                            <Button Content="Clear Log"
+                                                    Command="{Binding MissingEpisodeFinder.ClearActivityLogCommand}"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                    <ListBox x:Name="MissingEpisodeActivityLogListBox"
+                                             Grid.Row="1"
+                                             MinHeight="0"
+                                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                             ItemsSource="{Binding MissingEpisodeFinder.ActivityLog}">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:LogEntryViewModel">
+                                                <Grid Margin="0,2" ColumnDefinitions="72,*" ColumnSpacing="12">
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding TimeText}"
+                                                               FontFamily="Consolas"
+                                                               Opacity="0.68"/>
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding Message}"
+                                                               TextWrapping="Wrap"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Grid>
+                            </TabItem>
+
+                            <TabItem Header="Errors">
+                                <Grid Margin="0,12,0,0" RowDefinitions="Auto,*" RowSpacing="12" MinHeight="0">
+                                    <TextBlock Grid.Row="0"
+                                               Text="Audit, queue, and deletion errors"
+                                               Opacity="0.72"/>
+                                    <ListBox Grid.Row="1"
+                                             MinHeight="0"
+                                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                             ItemsSource="{Binding MissingEpisodeFinder.Errors}">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:LogEntryViewModel">
+                                                <Grid Margin="0,2" ColumnDefinitions="72,*" ColumnSpacing="12">
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding TimeText}"
+                                                               FontFamily="Consolas"
+                                                               Opacity="0.68"/>
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding Message}"
+                                                               TextWrapping="Wrap"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Grid>
+                            </TabItem>
+                        </TabControl>
                     </Border>
                 </Grid>
             </Grid>

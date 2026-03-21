@@ -16,6 +16,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     private readonly ISeriesAuditRunner _auditRunner;
     private readonly IAuditRepository? _repository;
     private readonly ICatalogCache? _catalogCache;
+    private readonly INzbDownloadHistory? _nzbDownloadHistory;
     private SeriesAuditRunResult? _lastRunResult;
 
     public MissingEpisodeFinderViewModel()
@@ -30,6 +31,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         _auditRunner = auditRunner;
         _repository = repository;
         _catalogCache = repository as ICatalogCache;
+        _nzbDownloadHistory = repository as INzbDownloadHistory;
         RunInventoryCommand = new AsyncRelayCommand(RunInventoryAsync, CanRunInventory);
         CancelInventoryCommand = new RelayCommand(
             () => RunInventoryCommand.Cancel(),
@@ -38,6 +40,8 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         LoadLastRunCommand = new AsyncRelayCommand(LoadLastRunAsync, CanLoadLastRun);
         CheckUsenetCommand = new AsyncRelayCommand(CheckUsenetAsync, CanCheckUsenet);
         QueueMissingDownloadsCommand = new AsyncRelayCommand(QueueMissingDownloadsAsync, CanQueueMissingDownloads);
+        ClearActivityLogCommand = new RelayCommand(ClearActivityLog, CanClearActivityLog);
+        ClearEpisodeAttemptHistoryCommand = new AsyncRelayCommand<string>(ClearEpisodeAttemptHistoryAsync, CanClearEpisodeAttemptHistory);
         PendingDeleteSeriesCommand = new RelayCommand(PendingDeleteSeries, CanModifySeries);
         ConfirmDeleteSeriesCommand = new AsyncRelayCommand(ConfirmDeleteSeriesAsync, CanModifySeries);
         CancelDeleteSeriesCommand = new RelayCommand(() => IsPendingDelete = false);
@@ -45,9 +49,9 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
     public ObservableCollection<SeriesAuditItemViewModel> Series { get; } = [];
 
-    public ObservableCollection<string> ActivityLog { get; } = [];
+    public ObservableCollection<LogEntryViewModel> ActivityLog { get; } = [];
 
-    public ObservableCollection<string> Errors { get; } = [];
+    public ObservableCollection<LogEntryViewModel> Errors { get; } = [];
 
     public ObservableCollection<NzbEpisodeResultViewModel> NzbResults { get; } = [];
 
@@ -64,6 +68,10 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     public IAsyncRelayCommand CheckUsenetCommand { get; }
 
     public IAsyncRelayCommand QueueMissingDownloadsCommand { get; }
+
+    public IRelayCommand ClearActivityLogCommand { get; }
+
+    public IAsyncRelayCommand<string> ClearEpisodeAttemptHistoryCommand { get; }
 
     public IRelayCommand PendingDeleteSeriesCommand { get; }
 
@@ -95,9 +103,33 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     [ObservableProperty]
     private string nzbCategory = string.Empty;
 
+    [ObservableProperty]
+    private string sabnzbdUrl = string.Empty;
+
+    [ObservableProperty]
+    private string sabnzbdApiKey = string.Empty;
+
     public bool IsTheTvdbSelected => SelectedCatalogProvider == CatalogProviderKind.TheTvdb;
 
-    public bool IsNzbConfigured => !string.IsNullOrWhiteSpace(NzbApiKey) && !string.IsNullOrWhiteSpace(NzbWatchFolder);
+    public bool IsNzbSearchConfigured => !string.IsNullOrWhiteSpace(NzbApiKey);
+
+    public bool IsDirectSabQueueConfigured => !string.IsNullOrWhiteSpace(SabnzbdUrl) && !string.IsNullOrWhiteSpace(SabnzbdApiKey);
+
+    public bool IsQueueDownloadsConfigured => IsNzbSearchConfigured && (IsDirectSabQueueConfigured || !string.IsNullOrWhiteSpace(NzbWatchFolder));
+
+    public bool IsSabHistoryConfigured => IsDirectSabQueueConfigured;
+
+    public string QueueModeStatusText => IsDirectSabQueueConfigured
+        ? "Queue Mode: Direct SAB API"
+        : !string.IsNullOrWhiteSpace(NzbWatchFolder)
+            ? "Queue Mode: Watch Folder Fallback"
+            : "Queue Mode: Search Only";
+
+    public string QueueModeStatusDetail => IsDirectSabQueueConfigured
+        ? "Queue requests go straight to SABnzbd and the returned nzo_id is recorded."
+        : !string.IsNullOrWhiteSpace(NzbWatchFolder)
+            ? "NZB files are written to the watch folder when direct SAB API access is unavailable."
+            : "Usenet search is available, but queueing is disabled until SAB API or a watch folder is configured.";
 
     public bool HasNzbResults => NzbResults.Count > 0;
 
@@ -204,15 +236,29 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     [ObservableProperty]
     private bool showOnlyMissingEpisodes;
 
+    [ObservableProperty]
+    private bool excludeSeasonZeroOnlyMissingSeries;
+
+    [ObservableProperty]
+    private int selectedInspectorTabIndex;
+
+    [ObservableProperty]
+    private bool followActivityLogTail = true;
+
     public IEnumerable<SeriesAuditItemViewModel> FilteredSeries =>
-        ShowOnlyMissingEpisodes
-            ? Series.Where(static s => s.HasMissingEpisodes)
-            : Series;
+        Series.Where(ShouldIncludeSeriesInInventory);
 
     partial void OnShowOnlyMissingEpisodesChanged(bool value)
     {
         OnPropertyChanged(nameof(FilteredSeries));
         SelectedSeries = FilteredSeries.FirstOrDefault();
+    }
+
+    partial void OnExcludeSeasonZeroOnlyMissingSeriesChanged(bool value)
+    {
+        OnPropertyChanged(nameof(FilteredSeries));
+        if (SelectedSeries is not null && !ShouldIncludeSeriesInInventory(SelectedSeries))
+            SelectedSeries = FilteredSeries.FirstOrDefault();
     }
 
     partial void OnIsBusyChanged(bool value)
@@ -223,6 +269,8 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         LoadLastRunCommand.NotifyCanExecuteChanged();
         CheckUsenetCommand.NotifyCanExecuteChanged();
         QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
+        ClearActivityLogCommand.NotifyCanExecuteChanged();
+        ClearEpisodeAttemptHistoryCommand.NotifyCanExecuteChanged();
         PendingDeleteSeriesCommand.NotifyCanExecuteChanged();
         ConfirmDeleteSeriesCommand.NotifyCanExecuteChanged();
     }
@@ -234,7 +282,11 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
     partial void OnNzbApiKeyChanged(string value)
     {
-        OnPropertyChanged(nameof(IsNzbConfigured));
+        OnPropertyChanged(nameof(IsNzbSearchConfigured));
+        OnPropertyChanged(nameof(IsDirectSabQueueConfigured));
+        OnPropertyChanged(nameof(IsQueueDownloadsConfigured));
+        OnPropertyChanged(nameof(QueueModeStatusText));
+        OnPropertyChanged(nameof(QueueModeStatusDetail));
         OnPropertyChanged(nameof(QueueMissingDownloadsToolTip));
         CheckUsenetCommand.NotifyCanExecuteChanged();
         QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
@@ -242,14 +294,38 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
     partial void OnNzbWatchFolderChanged(string value)
     {
-        OnPropertyChanged(nameof(IsNzbConfigured));
+        OnPropertyChanged(nameof(IsQueueDownloadsConfigured));
+        OnPropertyChanged(nameof(QueueModeStatusText));
+        OnPropertyChanged(nameof(QueueModeStatusDetail));
         OnPropertyChanged(nameof(QueueMissingDownloadsToolTip));
         QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnNzbCategoryChanged(string value)
     {
-        OnPropertyChanged(nameof(IsNzbConfigured));
+        OnPropertyChanged(nameof(IsQueueDownloadsConfigured));
+    }
+
+    partial void OnSabnzbdUrlChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsDirectSabQueueConfigured));
+        OnPropertyChanged(nameof(IsQueueDownloadsConfigured));
+        OnPropertyChanged(nameof(IsSabHistoryConfigured));
+        OnPropertyChanged(nameof(QueueModeStatusText));
+        OnPropertyChanged(nameof(QueueModeStatusDetail));
+        OnPropertyChanged(nameof(QueueMissingDownloadsToolTip));
+        QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnSabnzbdApiKeyChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsDirectSabQueueConfigured));
+        OnPropertyChanged(nameof(IsQueueDownloadsConfigured));
+        OnPropertyChanged(nameof(IsSabHistoryConfigured));
+        OnPropertyChanged(nameof(QueueModeStatusText));
+        OnPropertyChanged(nameof(QueueModeStatusDetail));
+        OnPropertyChanged(nameof(QueueMissingDownloadsToolTip));
+        QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnLibraryPathChanged(string value)
@@ -273,26 +349,38 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         OnPropertyChanged(nameof(QueueMissingDownloadsToolTip));
         CheckUsenetCommand.NotifyCanExecuteChanged();
         QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
+        ClearEpisodeAttemptHistoryCommand.NotifyCanExecuteChanged();
         PendingDeleteSeriesCommand.NotifyCanExecuteChanged();
         ConfirmDeleteSeriesCommand.NotifyCanExecuteChanged();
     }
 
     private bool CanRunInventory() => !IsBusy && !string.IsNullOrWhiteSpace(LibraryPath);
 
+    private bool ShouldIncludeSeriesInInventory(SeriesAuditItemViewModel series) =>
+        (!ShowOnlyMissingEpisodes || series.HasMissingEpisodes)
+        && (!ExcludeSeasonZeroOnlyMissingSeries || !series.HasOnlySeasonZeroMissingEpisodes);
+
     private bool CanClearInventory() => !IsBusy && Series.Count > 0;
 
     private bool CanLoadLastRun() => !IsBusy && _repository is not null && !string.IsNullOrWhiteSpace(LibraryPath);
 
-    private bool CanCheckUsenet() => !IsBusy && !IsCheckingUsenet && IsNzbConfigured
+    private bool CanCheckUsenet() => !IsBusy && !IsCheckingUsenet && IsNzbSearchConfigured
         && SelectedSeries is { HasMissingEpisodes: true };
 
-    private bool CanQueueMissingDownloads() => !IsBusy && !IsQueueingDownloads && IsNzbConfigured
+    private bool CanQueueMissingDownloads() => !IsBusy && !IsQueueingDownloads && IsQueueDownloadsConfigured
         && SelectedSeries is { HasMissingEpisodes: true };
+
+    private bool CanClearActivityLog() => !IsBusy && ActivityLog.Count > 0;
 
     public string QueueMissingDownloadsToolTip =>
-        !IsNzbConfigured ? "Enter an NZBPlanet API key and NZB watch folder in Settings to enable this."
+        !IsNzbSearchConfigured ? "Enter an NZBPlanet API key to enable Usenet search."
+        : !IsQueueDownloadsConfigured ? "Enter either SABnzbd URL + API key for direct queueing or a SABnzbd watch folder for file-drop queueing."
         : SelectedSeries is not { HasMissingEpisodes: true } ? "No missing episodes for this series."
-        : "Search NZBPlanet for each missing episode and save the best NZB to the watch folder.";
+        : IsDirectSabQueueConfigured
+            ? "Search NZBPlanet, skip previously sent releases and SABnzbd failures, and queue the best release directly in SABnzbd."
+            : IsSabHistoryConfigured
+                ? "Search NZBPlanet, skip previously sent releases and SABnzbd failures, and save the best NZB to the watch folder."
+                : "Search NZBPlanet for each missing episode and save the best NZB to the watch folder.";
 
     private bool CanModifySeries() => SelectedSeries is not null && !IsBusy;
 
@@ -303,13 +391,13 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         StatusMessage = "Scanning local inventory...";
         AuditProgressValue = 0;
         AuditProgressMax = 0;
-        ActivityLog.Clear();
-        Errors.Clear();
+        ClearActivityLogEntries();
+        ClearErrorEntries();
 
         var progress = new Progress<AuditProgressReport>(report =>
         {
             StatusMessage = report.Message;
-            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {report.Message}");
+            AddActivity(report.Message);
             AuditProgressMax = report.Total;
             AuditProgressValue = report.Current;
         });
@@ -343,14 +431,12 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         catch (OperationCanceledException)
         {
             StatusMessage = "Audit run cancelled.";
-            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Audit run cancelled by user.");
+            AddActivity("Audit run cancelled by user.");
         }
         catch (Exception ex)
         {
-            Errors.Add(ex.Message);
-            ErrorCount = Errors.Count;
+            AddError(ex.Message);
             StatusMessage = "Inventory scan failed.";
-            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  ERROR: {ex.Message}");
         }
         finally
         {
@@ -367,10 +453,10 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
             Series.Add(new SeriesAuditItemViewModel(item));
         }
 
-        Errors.Clear();
+        ClearErrorEntries();
         foreach (var error in result.Errors)
         {
-            Errors.Add(error);
+            AddError(error, includeInActivityLog: false);
         }
 
         SeriesCount = result.Summary.SeriesScanned;
@@ -384,12 +470,12 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         CatalogErrorSeriesCount = result.Summary.CatalogErrorSeries;
         SeriesWithMissingEpisodesCount = result.Summary.SeriesWithMissingEpisodes;
         MissingEpisodeCount = result.Summary.MissingEpisodeCount;
-        ErrorCount = result.Errors.Count;
+        ErrorCount = Errors.Count;
         LastRunSummary =
             SelectedCatalogProvider == CatalogProviderKind.None
                 ? $"Series {SeriesCount} • Ready {ReadySeriesCount} • Partial {PartialSeriesCount} • No parsed episodes {NoParsedEpisodeSeriesCount}"
                 : $"Series {SeriesCount} • Catalog matched {CatalogMatchedSeriesCount} • Missing episodes {MissingEpisodeCount} • Ambiguous {CatalogAmbiguousSeriesCount}";
-        SelectedSeries = Series.FirstOrDefault();
+        SelectedSeries = FilteredSeries.FirstOrDefault();
         ClearInventoryCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(FilteredSeries));
         IsAuditControlsExpanded = false;
@@ -401,8 +487,8 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     private void ClearInventory()
     {
         Series.Clear();
-        ActivityLog.Clear();
-        Errors.Clear();
+        ClearActivityLogEntries();
+        ClearErrorEntries();
         NzbResults.Clear();
         SelectedSeries = null;
         SeriesCount = 0;
@@ -435,7 +521,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
         IsBusy = true;
         StatusMessage = "Loading last saved run...";
-        ActivityLog.Clear();
+        ClearActivityLogEntries();
 
         try
         {
@@ -450,12 +536,12 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
             LastSavedRunDate = stored.Value.RunDate.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
             OnPropertyChanged(nameof(HasLastSavedRun));
             StatusMessage = $"Loaded run from {LastSavedRunDate}.";
-            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Loaded {SeriesCount} series from saved run ({LastSavedRunDate}).");
+            AddActivity($"Loaded {SeriesCount} series from saved run ({LastSavedRunDate}).");
         }
         catch (Exception ex)
         {
             StatusMessage = "Failed to load last run.";
-            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  ERROR: {ex.Message}");
+            AddError(ex.Message);
         }
         finally
         {
@@ -468,15 +554,18 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         if (SelectedSeries is null || string.IsNullOrWhiteSpace(NzbApiKey)) return;
 
         IsCheckingUsenet = true;
+        ClearEpisodeAttemptHistoryCommand.NotifyCanExecuteChanged();
         NzbResults.Clear();
         OnPropertyChanged(nameof(HasNzbResults));
         StatusMessage = $"Checking Usenet availability for {SelectedSeries.DisplayTitle}...";
-        ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Checking NZBPlanet for {SelectedSeries.DisplayTitle}...");
+        AddActivity($"Checking NZBPlanet for {SelectedSeries.DisplayTitle}...");
 
         try
         {
+            var sabFailedReleaseKeysByEpisode = await LoadSabFailedReleaseKeysByEpisodeAsync(SelectedSeries);
+            var sabRetryNzoIdsByEpisode = await LoadSabRetryNzoIdsByEpisodeAsync(SelectedSeries);
             using var checker = new NzbPlanetAvailabilityChecker(NzbApiKey.Trim(),
-                log: msg => ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {msg}"));
+                log: AddActivity);
             foreach (var ep in SelectedSeries.Item.MissingEpisodes)
             {
                 var results = await checker.SearchAsync(
@@ -484,8 +573,27 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                     ParseSeason(ep.Key),
                     ParseEpisode(ep.Key));
 
-                NzbResults.Add(new NzbEpisodeResultViewModel(ep.Key, ep.Title, results.Count, NzbPlanetAvailabilityChecker.HasH265(results)));
-                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → {results.Count} NZB(s) found.");
+                var attempts = await GetEpisodeAttemptsAsync(SelectedSeries, ep.Key);
+                var attemptedReleaseKeys = BuildComparableReleaseKeySet(attempts);
+                var sabFailedReleaseKeys = GetReleaseKeysForEpisode(sabFailedReleaseKeysByEpisode, ep.Key);
+                var retryableSabNzoIds = GetRetryNzoIdsForEpisode(sabRetryNzoIdsByEpisode, ep.Key);
+                var excludedReleaseKeys = BuildComparableReleaseKeySet(attemptedReleaseKeys, sabFailedReleaseKeys);
+                var availableFreshCount = results.Count(result => !NzbReleaseIdentity.GetComparableReleaseKeys(result)
+                    .Any(excludedReleaseKeys.Contains));
+
+                NzbResults.Add(new NzbEpisodeResultViewModel(
+                    ep.Key,
+                    ep.Title,
+                    results.Count,
+                    NzbPlanetAvailabilityChecker.HasH265(results),
+                    attempts.Count,
+                    sabFailedReleaseKeys.Count,
+                    availableFreshCount,
+                    retryableSabNzoIds.Count,
+                    attempts.Count > 0 ? () => ClearEpisodeAttemptHistoryAsync(ep.Key) : null,
+                    retryableSabNzoIds.Count > 0 ? () => RetryFailedSabJobAsync(ep.Key, retryableSabNzoIds) : null));
+
+                AddActivity($"{ep.Key} → {results.Count} NZB(s) found, {availableFreshCount} untried after history filtering.");
             }
 
             OnPropertyChanged(nameof(HasNzbResults));
@@ -494,30 +602,42 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         catch (Exception ex)
         {
             StatusMessage = "Usenet check failed.";
-            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  ERROR: {ex.Message}");
+            AddError(ex.Message);
         }
         finally
         {
             IsCheckingUsenet = false;
             CheckUsenetCommand.NotifyCanExecuteChanged();
+            ClearEpisodeAttemptHistoryCommand.NotifyCanExecuteChanged();
         }
     }
 
     private async Task QueueMissingDownloadsAsync()
     {
-        if (SelectedSeries is null || string.IsNullOrWhiteSpace(NzbApiKey) || string.IsNullOrWhiteSpace(NzbWatchFolder)) return;
+        if (SelectedSeries is null || string.IsNullOrWhiteSpace(NzbApiKey) || !IsQueueDownloadsConfigured) return;
 
         IsQueueingDownloads = true;
+        ClearEpisodeAttemptHistoryCommand.NotifyCanExecuteChanged();
         var series = SelectedSeries;
+        var libraryPath = LibraryPath.Trim();
         var queued = 0;
         var notFound = 0;
+        var alreadyAttempted = 0;
         StatusMessage = $"Queuing missing downloads for {series.DisplayTitle}...";
-        ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Queuing NZBPlanet downloads for {series.DisplayTitle}...");
+        AddActivity($"Queuing NZBPlanet downloads for {series.DisplayTitle}...");
 
         try
         {
+            var sabFailedReleaseKeysByEpisode = await LoadSabFailedReleaseKeysByEpisodeAsync(series);
             using var checker = new NzbPlanetAvailabilityChecker(NzbApiKey.Trim(),
-                log: msg => ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {msg}"));
+                log: AddActivity);
+            using var sabClient = IsDirectSabQueueConfigured
+                ? new SabnzbdHistoryClient(
+                    SabnzbdUrl.Trim(),
+                    SabnzbdApiKey.Trim(),
+                    log: AddActivity)
+                : null;
+
             foreach (var ep in series.Item.MissingEpisodes)
             {
                 var results = await checker.SearchAsync(
@@ -525,42 +645,96 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                     ParseSeason(ep.Key),
                     ParseEpisode(ep.Key));
 
-                var preferred = NzbPlanetAvailabilityChecker.SelectPreferred(results);
+                var attempts = await GetEpisodeAttemptsAsync(series, ep.Key);
+                var attemptedReleaseKeys = BuildComparableReleaseKeySet(attempts);
+                var sabFailedReleaseKeys = GetReleaseKeysForEpisode(sabFailedReleaseKeysByEpisode, ep.Key);
+                var excludedReleaseKeys = BuildComparableReleaseKeySet(attemptedReleaseKeys, sabFailedReleaseKeys);
+
+                var preferred = NzbPlanetAvailabilityChecker.SelectPreferred(results, excludedReleaseKeys);
                 if (preferred is null || string.IsNullOrWhiteSpace(preferred.DownloadUrl))
                 {
-                    notFound++;
-                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → not found on NZBPlanet.");
+                    if (results.Count > 0 && excludedReleaseKeys.Count > 0)
+                    {
+                        alreadyAttempted++;
+                        AddActivity($"{ep.Key} → all {results.Count} NZB(s) were already sent before or failed in SABnzbd.");
+                    }
+                    else
+                    {
+                        notFound++;
+                        AddActivity($"{ep.Key} → not found on NZBPlanet.");
+                    }
+
                     continue;
                 }
 
-                var filename = SanitizeFilename(preferred.Title) + ".nzb";
-                var destPath = Path.Combine(NzbWatchFolder.Trim(), filename);
-                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → selected: {preferred.Title}");
-                var saved = await checker.DownloadNzbAsync(preferred.DownloadUrl, destPath,
-                    string.IsNullOrWhiteSpace(NzbCategory) ? null : NzbCategory.Trim());
+                AddActivity($"{ep.Key} → selected: {preferred.Title}");
+                var saved = false;
+                string? sabNzoId = null;
+
+                if (sabClient is not null)
+                {
+                    var queueResult = await sabClient.AddDownloadUrlAsync(
+                        preferred.DownloadUrl,
+                        preferred.Title,
+                        string.IsNullOrWhiteSpace(NzbCategory) ? null : NzbCategory.Trim());
+                    saved = queueResult.Success;
+                    sabNzoId = queueResult.NzoId;
+
+                    if (!queueResult.Success)
+                        AddActivity($"{ep.Key} → SABnzbd rejected release: {queueResult.ErrorMessage}");
+                }
+                else
+                {
+                    var filename = SanitizeFilename(preferred.Title) + ".nzb";
+                    var destPath = Path.Combine(NzbWatchFolder.Trim(), filename);
+                    saved = await checker.DownloadNzbAsync(preferred.DownloadUrl, destPath,
+                        string.IsNullOrWhiteSpace(NzbCategory) ? null : NzbCategory.Trim());
+
+                    if (saved)
+                        AddActivity($"{ep.Key} → saved: {filename}");
+                }
+
                 if (saved)
                 {
                     queued++;
-                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → saved: {filename}");
+                    if (_nzbDownloadHistory is not null && !string.IsNullOrWhiteSpace(libraryPath))
+                    {
+                        await _nzbDownloadHistory.RecordAttemptAsync(
+                            libraryPath,
+                            series.Item.NormalizedTitle,
+                            series.Item.Year,
+                            ep.Key,
+                            preferred,
+                            sabNzoId);
+                    }
+
+                    AddActivity(sabClient is not null
+                        ? $"{ep.Key} → queued in SABnzbd (nzo_id={sabNzoId ?? "unknown"})."
+                        : $"{ep.Key} → queued via watch folder.");
                 }
                 else
                 {
                     notFound++;
-                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {ep.Key} → download failed (see above).");
+                    AddActivity($"{ep.Key} → download failed (see above).");
                 }
             }
 
-            StatusMessage = $"Saved {queued} of {queued + notFound} NZBs to {NzbWatchFolder}.";
+            StatusMessage = alreadyAttempted > 0
+                ? $"Queued {queued} release(s); {alreadyAttempted} episode(s) were skipped because every found release was already attempted."
+                : sabClient is not null
+                    ? $"Queued {queued} of {queued + notFound} release(s) directly in SABnzbd."
+                    : $"Saved {queued} of {queued + notFound} NZBs to {NzbWatchFolder}.";
         }
         catch (Exception ex)
         {
             StatusMessage = "Queue failed.";
-            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  ERROR: {ex.Message}");
+            AddError(ex.Message);
         }
         finally
         {
             IsQueueingDownloads = false;
             QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
+            ClearEpisodeAttemptHistoryCommand.NotifyCanExecuteChanged();
         }
     }
 
@@ -568,6 +742,167 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     {
         var invalid = Path.GetInvalidFileNameChars();
         return string.Concat(title.Select(c => Array.IndexOf(invalid, c) >= 0 ? '_' : c)).Trim();
+    }
+
+    private async Task<IReadOnlyList<NzbDownloadAttempt>> GetEpisodeAttemptsAsync(
+        SeriesAuditItemViewModel series,
+        string episodeKey,
+        CancellationToken ct = default)
+    {
+        if (_nzbDownloadHistory is null || string.IsNullOrWhiteSpace(LibraryPath))
+            return [];
+
+        return await _nzbDownloadHistory.GetAttemptsAsync(
+            LibraryPath.Trim(),
+            series.Item.NormalizedTitle,
+            series.Item.Year,
+            episodeKey,
+            ct);
+    }
+
+    private bool CanClearEpisodeAttemptHistory(string? episodeKey) =>
+        !IsBusy
+        && !IsCheckingUsenet
+        && !IsQueueingDownloads
+        && _nzbDownloadHistory is not null
+        && SelectedSeries is not null
+        && !string.IsNullOrWhiteSpace(LibraryPath)
+        && !string.IsNullOrWhiteSpace(episodeKey);
+
+    private async Task ClearEpisodeAttemptHistoryAsync(string? episodeKey)
+    {
+        if (!CanClearEpisodeAttemptHistory(episodeKey) || SelectedSeries is null || string.IsNullOrWhiteSpace(episodeKey))
+            return;
+
+        await _nzbDownloadHistory!.ClearAttemptsAsync(
+            LibraryPath.Trim(),
+            SelectedSeries.Item.NormalizedTitle,
+            SelectedSeries.Item.Year,
+            episodeKey);
+
+        AddActivity($"{episodeKey} → cleared local attempt history.");
+
+        var sabFailedReleaseKeysByEpisode = await LoadSabFailedReleaseKeysByEpisodeAsync(SelectedSeries);
+        if (GetReleaseKeysForEpisode(sabFailedReleaseKeysByEpisode, episodeKey).Count > 0)
+            AddActivity($"{episodeKey} → SABnzbd still reports failed releases for this episode, so those releases remain filtered.");
+
+        if (CanCheckUsenet())
+            await CheckUsenetAsync();
+    }
+
+    private async Task<IReadOnlyDictionary<string, IReadOnlyCollection<string>>> LoadSabFailedReleaseKeysByEpisodeAsync(
+        SeriesAuditItemViewModel series,
+        CancellationToken ct = default)
+    {
+        if (!IsSabHistoryConfigured)
+            return new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase);
+
+        using var client = new SabnzbdHistoryClient(
+            SabnzbdUrl.Trim(),
+            SabnzbdApiKey.Trim(),
+            log: AddActivity);
+
+        var failedHistory = await client.GetFailedHistoryAsync(
+            string.IsNullOrWhiteSpace(NzbCategory) ? null : NzbCategory.Trim(),
+            ct: ct);
+
+        AddActivity($"SABnzbd history returned {failedHistory.Count} failed item(s).");
+
+        return SabnzbdHistoryMatcher.BuildFailedReleaseKeysByEpisode(
+            series.Item.NormalizedTitle,
+            series.Item.MissingEpisodeKeys,
+            failedHistory);
+    }
+
+    private async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> LoadSabRetryNzoIdsByEpisodeAsync(
+        SeriesAuditItemViewModel series,
+        CancellationToken ct = default)
+    {
+        if (!IsSabHistoryConfigured)
+            return new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+
+        using var client = new SabnzbdHistoryClient(
+            SabnzbdUrl.Trim(),
+            SabnzbdApiKey.Trim(),
+            log: AddActivity);
+
+        var failedHistory = await client.GetFailedHistoryAsync(
+            string.IsNullOrWhiteSpace(NzbCategory) ? null : NzbCategory.Trim(),
+            ct: ct);
+
+        return SabnzbdHistoryMatcher.BuildFailedNzoIdsByEpisode(
+            series.Item.NormalizedTitle,
+            series.Item.MissingEpisodeKeys,
+            failedHistory);
+    }
+
+    private static HashSet<string> BuildComparableReleaseKeySet(IEnumerable<NzbDownloadAttempt> attempts)
+    {
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var attempt in attempts)
+        {
+            foreach (var key in NzbReleaseIdentity.GetComparableReleaseKeys(
+                attempt.ReleaseTitle,
+                attempt.NzbId,
+                attempt.ReleaseKey))
+            {
+                keys.Add(key);
+            }
+        }
+
+        return keys;
+    }
+
+    private static HashSet<string> BuildComparableReleaseKeySet(
+        IEnumerable<string> first,
+        IEnumerable<string> second)
+    {
+        var keys = new HashSet<string>(first, StringComparer.OrdinalIgnoreCase);
+        keys.UnionWith(second);
+        return keys;
+    }
+
+    private static IReadOnlyCollection<string> GetReleaseKeysForEpisode(
+        IReadOnlyDictionary<string, IReadOnlyCollection<string>> releaseKeysByEpisode,
+        string episodeKey)
+    {
+        return releaseKeysByEpisode.TryGetValue(episodeKey, out var keys)
+            ? keys
+            : [];
+    }
+
+    private static IReadOnlyList<string> GetRetryNzoIdsForEpisode(
+        IReadOnlyDictionary<string, IReadOnlyList<string>> nzoIdsByEpisode,
+        string episodeKey)
+    {
+        return nzoIdsByEpisode.TryGetValue(episodeKey, out var nzoIds)
+            ? nzoIds
+            : [];
+    }
+
+    private async Task RetryFailedSabJobAsync(string episodeKey, IReadOnlyList<string> nzoIds)
+    {
+        if (!IsSabHistoryConfigured || nzoIds.Count == 0)
+            return;
+
+        using var client = new SabnzbdHistoryClient(
+            SabnzbdUrl.Trim(),
+            SabnzbdApiKey.Trim(),
+            log: AddActivity);
+
+        var nzoId = nzoIds[0];
+        var retried = await client.RetryHistoryItemAsync(nzoId);
+
+        if (retried)
+        {
+            AddActivity($"{episodeKey} → retried failed SABnzbd job {nzoId}.");
+            if (CanCheckUsenet())
+                await CheckUsenetAsync();
+            return;
+        }
+
+        AddActivity($"{episodeKey} → SABnzbd did not accept retry for job {nzoId}.");
     }
 
     private void PendingDeleteSeries()
@@ -591,16 +926,14 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
             if (string.IsNullOrWhiteSpace(series.FolderPath))
             {
                 const string msg = "Folder path is not recorded for this series — cannot delete files.";
-                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  ERROR: {msg}");
-                Errors.Add(msg);
-                ErrorCount = Errors.Count;
+                AddError(msg);
                 StatusMessage = "Deletion failed.";
                 return;
             }
 
             if (!Directory.Exists(series.FolderPath))
             {
-                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  WARNING: Folder not found on disk (already removed?): {series.FolderPath}");
+                AddActivity($"WARNING: Folder not found on disk (already removed?): {series.FolderPath}");
             }
             else
             {
@@ -617,7 +950,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
                     Directory.Delete(series.FolderPath, recursive: true);
                 });
-                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Deleted: {series.FolderPath}");
+                AddActivity($"Deleted: {series.FolderPath}");
             }
 
             // Capture the current position in the filtered list before modifying the collection,
@@ -660,7 +993,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                 };
                 _lastRunResult = pruned;
                 await _repository.SaveRunAsync(pruned);
-                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Database entry removed for {series.DisplayTitle}.");
+                AddActivity($"Database entry removed for {series.DisplayTitle}.");
             }
 
             StatusMessage = $"Deleted {series.DisplayTitle}.";
@@ -673,9 +1006,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         {
             var msg = $"Failed to delete '{series.DisplayTitle}': {ex.Message}";
             StatusMessage = "Deletion failed.";
-            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  ERROR: {msg}");
-            Errors.Add(msg);
-            ErrorCount = Errors.Count;
+            AddError(msg);
         }
         finally
         {
@@ -690,6 +1021,39 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
             && int.TryParse(episodeKey.AsSpan(1, 2), out var s))
             return s;
         return 1;
+    }
+
+    private void ClearActivityLog()
+    {
+        ClearActivityLogEntries();
+        StatusMessage = "Activity log cleared.";
+    }
+
+    private void AddActivity(string message)
+    {
+        ActivityLog.Add(new LogEntryViewModel(DateTime.Now, message));
+        ClearActivityLogCommand.NotifyCanExecuteChanged();
+    }
+
+    private void AddError(string message, bool includeInActivityLog = true)
+    {
+        Errors.Add(new LogEntryViewModel(DateTime.Now, message));
+        ErrorCount = Errors.Count;
+
+        if (includeInActivityLog)
+            AddActivity($"ERROR: {message}");
+    }
+
+    private void ClearActivityLogEntries()
+    {
+        ActivityLog.Clear();
+        ClearActivityLogCommand.NotifyCanExecuteChanged();
+    }
+
+    private void ClearErrorEntries()
+    {
+        Errors.Clear();
+        ErrorCount = 0;
     }
 
     private static int ParseEpisode(string episodeKey)
