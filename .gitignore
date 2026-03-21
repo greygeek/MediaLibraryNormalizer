@@ -40,3 +40,4 @@ $RECYCLE.BIN/
 # Rider / JetBrains
 .idea/
 *.sln.iml
+normalizer.config.json
