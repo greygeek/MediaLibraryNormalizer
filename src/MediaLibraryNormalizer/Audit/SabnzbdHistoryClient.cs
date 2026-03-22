@@ -85,6 +85,37 @@ public sealed class SabnzbdHistoryClient : IDisposable
         return new SabnzbdQueueResult(true, payload.NzoIds?.FirstOrDefault());
     }
 
+    public async Task<List<string>> GetQueuedNzoIdsAsync(
+        string? category = null,
+        CancellationToken ct = default)
+    {
+        var url = BuildQueueUrl(category);
+        _log?.Invoke($"[SABnzbd] GET {url.Replace(_apiKey, "***")}");
+
+        using var response = await _httpClient.GetAsync(url, ct);
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadFromJsonAsync<SabQueueEnvelope>(cancellationToken: ct)
+            ?? throw new InvalidOperationException("SABnzbd queue API returned an empty response.");
+
+        if (!string.IsNullOrWhiteSpace(payload.Error))
+            throw new InvalidOperationException($"SABnzbd API error: {payload.Error}");
+
+        var queuedNzoIds = new List<string>();
+        var slots = payload.Queue?.Slots;
+        if (slots is null)
+            return queuedNzoIds;
+
+        foreach (var slot in slots)
+        {
+            var nzoId = slot.NzoId;
+            if (!string.IsNullOrWhiteSpace(nzoId))
+                queuedNzoIds.Add(nzoId);
+        }
+
+        return queuedNzoIds;
+    }
+
     public async Task<bool> RetryHistoryItemAsync(string nzoId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(nzoId))
@@ -135,6 +166,22 @@ public sealed class SabnzbdHistoryClient : IDisposable
         query["name"] = downloadUrl;
         query["nzbname"] = jobName;
         query["cat"] = string.IsNullOrWhiteSpace(category) ? "*" : category.Trim();
+
+        builder.Query = query.ToString() ?? string.Empty;
+        return builder.Uri.ToString();
+    }
+
+    private string BuildQueueUrl(string? category)
+    {
+        var builder = new UriBuilder(_baseUrl);
+        builder.Path = builder.Path.TrimEnd('/') + "/api";
+
+        var query = System.Web.HttpUtility.ParseQueryString(string.Empty);
+        query["mode"] = "queue";
+        query["output"] = "json";
+        query["apikey"] = _apiKey;
+        if (!string.IsNullOrWhiteSpace(category))
+            query["cat"] = category.Trim();
 
         builder.Query = query.ToString() ?? string.Empty;
         return builder.Uri.ToString();
@@ -191,6 +238,27 @@ public sealed class SabnzbdHistoryClient : IDisposable
 
         [JsonPropertyName("error")]
         public string? Error { get; init; }
+    }
+
+    private sealed class SabQueueEnvelope
+    {
+        [JsonPropertyName("queue")]
+        public SabQueuePayload? Queue { get; init; }
+
+        [JsonPropertyName("error")]
+        public string? Error { get; init; }
+    }
+
+    private sealed class SabQueuePayload
+    {
+        [JsonPropertyName("slots")]
+        public List<SabQueueSlot>? Slots { get; init; }
+    }
+
+    private sealed class SabQueueSlot
+    {
+        [JsonPropertyName("nzo_id")]
+        public string? NzoId { get; init; }
     }
 
     private sealed class SabHistorySlot

@@ -77,7 +77,8 @@ public class SeriesAuditItemViewModel
 
     public string? SeriesStatus => Item.CatalogSeriesStatus;
 
-    public string? RatingText => Item.CatalogRating.HasValue
+    public string? RatingText => Item.CatalogProvider == CatalogProviderKind.TvMaze
+        && Item.CatalogRating.HasValue
         ? $"★ {Item.CatalogRating.Value:F1}"
         : null;
 

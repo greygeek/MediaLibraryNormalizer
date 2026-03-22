@@ -37,7 +37,8 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="1" Margin="0,16,0,0" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+        <Border Grid.Row="1" Margin="0,16,0,0" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1"
+                IsVisible="{Binding IsHomePageActive}">
             <StackPanel Spacing="8">
                 <TextBlock Text="Library Path" FontWeight="SemiBold"/>
                 <TextBox Text="{Binding LibraryPath}" Watermark="F:\TV or another library root"/>
@@ -91,67 +92,63 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <Grid IsVisible="{Binding IsMergeManagerActive}" RowDefinitions="Auto,Auto,*" RowSpacing="16">
-                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+            <Grid IsVisible="{Binding IsMergeManagerActive}" RowDefinitions="Auto,Auto,*" RowSpacing="12">
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
                     <StackPanel Grid.Row="0" Grid.Column="0" Spacing="8">
                         <TextBlock Text="Merge Controls" FontWeight="SemiBold" FontSize="18"/>
                         <TextBlock Text="Use the existing normalization pipeline from this workspace." Opacity="0.75" TextWrapping="Wrap"/>
                     </StackPanel>
 
                     <StackPanel Grid.Row="0" Grid.Column="1" Margin="16,0,0,0" Spacing="8" VerticalAlignment="Bottom">
-                        <Button Command="{Binding PreviewCommand}" Content="Run Dry Run" MinWidth="140"/>
+                        <Button Command="{Binding PreviewCommand}" Content="Run Scan" MinWidth="140"/>
                         <Button Command="{Binding MergeCommand}" Content="Run Approved Live Merge" MinWidth="200" Classes="accent"/>
                     </StackPanel>
 
-                    <WrapPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,16,0,0" ItemWidth="220" Orientation="Horizontal">
-                        <CheckBox Content="Exact matches with files only" IsChecked="{Binding ExactMatchesWithFilesOnly}" Margin="0,0,16,8"/>
-                        <CheckBox Content="Discard inferior duplicates" IsChecked="{Binding DiscardInferiorDuplicates}" Margin="0,0,16,8"/>
-                        <CheckBox Content="Use AI verification" IsChecked="{Binding UseAi}" Margin="0,0,16,8"/>
-                        <CheckBox Content="Use hashing" IsChecked="{Binding UseHash}" Margin="0,0,16,8"/>
-                        <CheckBox Content="Verbose logging" IsChecked="{Binding Verbose}" Margin="0,0,16,8"/>
-                        <CheckBox Content="Delete sample files" IsChecked="{Binding DeleteSamples}" Margin="0,0,16,8"/>
-                        <CheckBox Content="Delete unparsed files" IsChecked="{Binding DeleteNonEpisodeFiles}" Margin="0,0,16,8"/>
-                        <CheckBox Content="Rename non-standard filenames" IsChecked="{Binding RenameNonStandardFiles}" Margin="0,0,16,8"/>
-                        <CheckBox Content="Flatten episode release folders" IsChecked="{Binding FlattenEpisodeReleaseFolders}" Margin="0,0,16,8"/>
-                        <CheckBox Content="AI-assisted file organization" IsChecked="{Binding UseAiOrganizer}" Margin="0,0,16,8"/>
-                    </WrapPanel>
-
-                    <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Margin="0,12,0,0" Text="{Binding LastRunSummary}" Opacity="0.75"/>
-                </Grid>
-
-                <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*,*" ColumnSpacing="12">
-                    <Border Grid.Column="0" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                        <StackPanel>
-                            <TextBlock Text="Mode" Opacity="0.7"/>
-                            <TextBlock Text="{Binding LastRunMode}" FontSize="20" FontWeight="Bold"/>
-                        </StackPanel>
-                    </Border>
-                    <Border Grid.Column="1" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                        <StackPanel>
-                            <TextBlock Text="Folders" Opacity="0.7"/>
-                            <TextBlock Text="{Binding TotalFolders}" FontSize="20" FontWeight="Bold"/>
-                        </StackPanel>
-                    </Border>
-                    <Border Grid.Column="2" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                        <StackPanel>
-                            <TextBlock Text="Duplicate Groups" Opacity="0.7"/>
-                            <TextBlock Text="{Binding DuplicateGroupCount}" FontSize="20" FontWeight="Bold"/>
-                            <TextBlock Text="{Binding SelectedDuplicateGroupCount, StringFormat='Eligible {0}'}" Opacity="0.7"/>
-                        </StackPanel>
-                    </Border>
-                    <Border Grid.Column="3" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                        <StackPanel>
-                            <TextBlock Text="Approved Groups" Opacity="0.7"/>
-                            <TextBlock Text="{Binding ApprovedDuplicateGroupCount}" FontSize="20" FontWeight="Bold"/>
-                        </StackPanel>
-                    </Border>
-                    <Border Grid.Column="4" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                        <StackPanel>
-                            <TextBlock Text="Errors" Opacity="0.7"/>
-                            <TextBlock Text="{Binding ErrorCount}" FontSize="20" FontWeight="Bold"/>
-                        </StackPanel>
+                    <Border Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,0" Padding="12,8"
+                            CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                        <WrapPanel Orientation="Horizontal">
+                            <TextBlock Text="Mode " Opacity="0.7"/>
+                            <TextBlock Text="{Binding LastRunMode}" FontWeight="SemiBold" Margin="0,0,16,0"/>
+                            <TextBlock Text="Folders " Opacity="0.7"/>
+                            <TextBlock Text="{Binding TotalFolders}" FontWeight="SemiBold" Margin="0,0,16,0"/>
+                            <TextBlock Text="Files " Opacity="0.7"/>
+                            <TextBlock Text="{Binding TotalFiles}" FontWeight="SemiBold" Margin="0,0,16,0"/>
+                            <TextBlock Text="Duplicate groups " Opacity="0.7"/>
+                            <TextBlock Text="{Binding DuplicateGroupCount}" FontWeight="SemiBold" Margin="0,0,16,0"/>
+                            <TextBlock Text="Eligible " Opacity="0.7"/>
+                            <TextBlock Text="{Binding SelectedDuplicateGroupCount}" FontWeight="SemiBold" Margin="0,0,16,0"/>
+                            <TextBlock Text="Approved " Opacity="0.7"/>
+                            <TextBlock Text="{Binding ApprovedDuplicateGroupCount}" FontWeight="SemiBold" Margin="0,0,16,0"/>
+                            <TextBlock Text="Errors " Opacity="0.7"/>
+                            <TextBlock Text="{Binding ErrorCount}" FontWeight="SemiBold"/>
+                        </WrapPanel>
                     </Border>
                 </Grid>
+
+                <Expander Grid.Row="1" Header="Settings"
+                          IsExpanded="{Binding IsMergeSettingsExpanded}">
+                    <Border Padding="16,12" CornerRadius="0,0,10,10"
+                            BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1,0,1,1">
+                        <StackPanel Spacing="12">
+                            <StackPanel MaxWidth="460">
+                                <TextBlock Text="Library Path" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                <TextBox Text="{Binding LibraryPath}" Watermark="F:\TV or another library root"/>
+                            </StackPanel>
+                            <WrapPanel ItemWidth="220" Orientation="Horizontal">
+                                <CheckBox Content="Exact matches with files only" IsChecked="{Binding ExactMatchesWithFilesOnly}" Margin="0,0,16,8"/>
+                                <CheckBox Content="Discard inferior duplicates" IsChecked="{Binding DiscardInferiorDuplicates}" Margin="0,0,16,8"/>
+                                <CheckBox Content="Use AI verification" IsChecked="{Binding UseAi}" Margin="0,0,16,8"/>
+                                <CheckBox Content="Use hashing" IsChecked="{Binding UseHash}" Margin="0,0,16,8"/>
+                                <CheckBox Content="Verbose logging" IsChecked="{Binding Verbose}" Margin="0,0,16,8"/>
+                                <CheckBox Content="Delete sample files" IsChecked="{Binding DeleteSamples}" Margin="0,0,16,8"/>
+                                <CheckBox Content="Delete unparsed files" IsChecked="{Binding DeleteNonEpisodeFiles}" Margin="0,0,16,8"/>
+                                <CheckBox Content="Rename non-standard filenames" IsChecked="{Binding RenameNonStandardFiles}" Margin="0,0,16,8"/>
+                                <CheckBox Content="Flatten episode release folders" IsChecked="{Binding FlattenEpisodeReleaseFolders}" Margin="0,0,16,8"/>
+                                <CheckBox Content="AI-assisted file organization" IsChecked="{Binding UseAiOrganizer}" Margin="0,0,16,8"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                </Expander>
 
                 <TabControl Grid.Row="2">
             <TabItem Header="Summary">
@@ -357,6 +354,11 @@
                           IsExpanded="{Binding MissingEpisodeFinder.IsAuditControlsExpanded}">
                     <Border Padding="16,12" CornerRadius="0,0,10,10"
                             BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1,0,1,1">
+                        <StackPanel Spacing="12">
+                            <StackPanel MaxWidth="460">
+                                <TextBlock Text="Library Path" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                <TextBox Text="{Binding LibraryPath}" Watermark="F:\TV or another library root"/>
+                            </StackPanel>
                         <WrapPanel ItemWidth="220" Orientation="Horizontal">
                             <StackPanel Margin="0,0,16,8">
                                 <TextBlock Text="Catalog Provider" FontWeight="SemiBold" Margin="0,0,0,6"/>
@@ -409,6 +411,7 @@
                             <CheckBox Content="Verbose logging" IsChecked="{Binding MissingEpisodeFinder.Verbose}" Margin="0,0,16,8"/>
                             <CheckBox Content="Include specials" IsChecked="{Binding MissingEpisodeFinder.IncludeSpecials}" Margin="0,0,16,8"/>
                         </WrapPanel>
+                        </StackPanel>
                     </Border>
                 </Expander>
 
@@ -418,14 +421,18 @@
                         <Grid RowDefinitions="Auto,Auto,Auto,*">
                             <TextBlock Grid.Row="0" Text="Series Inventory" Margin="8" FontSize="18" FontWeight="Bold"/>
                             <CheckBox Grid.Row="1" Margin="8,0,8,8" Content="Show only series with missing episodes" IsChecked="{Binding MissingEpisodeFinder.ShowOnlyMissingEpisodes}"/>
-                            <CheckBox Grid.Row="2" Margin="8,0,8,8" Content="Exclude series with only season 00 missing episodes" IsChecked="{Binding MissingEpisodeFinder.ExcludeSeasonZeroOnlyMissingSeries}"/>
+                            <CheckBox Grid.Row="2" Margin="8,0,8,8" Content="Exclude specials" IsChecked="{Binding MissingEpisodeFinder.ExcludeSeasonZeroOnlyMissingSeries}"/>
                             <ListBox x:Name="SeriesListBox" Grid.Row="3" MinHeight="0" ScrollViewer.VerticalScrollBarVisibility="Auto" ItemsSource="{Binding MissingEpisodeFinder.FilteredSeries}" SelectedItem="{Binding MissingEpisodeFinder.SelectedSeries}">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate x:DataType="vm:SeriesAuditItemViewModel">
                                         <Border Margin="4" Padding="8" CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
                                             <StackPanel Spacing="4">
                                                 <DockPanel>
-                                                    <TextBlock DockPanel.Dock="Left" Text="{Binding DisplayTitle}" FontWeight="SemiBold"/>
+                                                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="8">
+                                                        <TextBlock Text="{Binding DisplayTitle}" FontWeight="SemiBold"/>
+                                                        <TextBlock Text="{Binding RatingText}" FontSize="12" FontWeight="SemiBold" Opacity="0.8" VerticalAlignment="Center"
+                                                                   IsVisible="{Binding RatingText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                    </StackPanel>
                                                     <Border DockPanel.Dock="Right" Padding="8,2" CornerRadius="999" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
                                                         <TextBlock Text="{Binding StatusText}" FontSize="11"/>
                                                     </Border>

@@ -77,6 +77,8 @@ public partial class MainWindowViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool useAiOrganizer;
+    [ObservableProperty]
+    private bool isMergeSettingsExpanded = true;
 
     [ObservableProperty]
     private bool isBusy;
@@ -621,6 +623,7 @@ public partial class MainWindowViewModel : ViewModelBase
         GlobalCleanupSweepFolderCount = result.GlobalCleanupSweepFolderCount;
         ReportPath = result.ReportPath ?? string.Empty;
         TransactionLogPath = result.TransactionLogPath ?? string.Empty;
+        IsMergeSettingsExpanded = false;
         LastRunMode = result.Config.DryRun ? "Dry run" : "Live merge";
         _hasFreshPreview = dryRun;
         SelectedDuplicateGroup = DuplicateGroups.FirstOrDefault();

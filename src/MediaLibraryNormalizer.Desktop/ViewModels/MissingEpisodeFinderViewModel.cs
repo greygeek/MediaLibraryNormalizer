@@ -17,7 +17,9 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     private readonly IAuditRepository? _repository;
     private readonly ICatalogCache? _catalogCache;
     private readonly INzbDownloadHistory? _nzbDownloadHistory;
+    private readonly HashSet<string> _queuedMissingEpisodeKeys = new(StringComparer.OrdinalIgnoreCase);
     private SeriesAuditRunResult? _lastRunResult;
+    private CancellationTokenSource? _selectedSeriesQueueStatusCts;
 
     public MissingEpisodeFinderViewModel()
         : this(new SeriesAuditRunner())
@@ -172,11 +174,13 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
     public bool HasResults => SeriesCount > 0;
 
-    public string RunSummaryLine => SeriesCount == 0
+    public string RunSummaryLine => Series.Count == 0
         ? "No results — run a scan or load a previous run."
-        : MissingEpisodeCount > 0
-            ? $"{SeriesCount:N0} series  •  {CatalogMatchedSeriesCount:N0} matched  •  {MissingEpisodeCount:N0} missing  •  {CatalogAmbiguousSeriesCount:N0} ambiguous  •  {UnparseableFileCount:N0} unparseable"
-            : $"{SeriesCount:N0} series  •  {ParsedEpisodeCount:N0} parsed episodes  •  {UnparseableFileCount:N0} unparseable";
+        : SeriesCount == 0
+            ? "No series match the current specials filter."
+            : MissingEpisodeCount > 0
+                ? $"{SeriesCount:N0} series  •  {CatalogMatchedSeriesCount:N0} matched  •  {MissingEpisodeCount:N0} missing  •  {CatalogAmbiguousSeriesCount:N0} ambiguous  •  {UnparseableFileCount:N0} unparseable"
+                : $"{SeriesCount:N0} series  •  {ParsedEpisodeCount:N0} parsed episodes  •  {UnparseableFileCount:N0} unparseable";
 
     [ObservableProperty]
     private int seriesCount;
@@ -227,9 +231,9 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
     public string SelectedSeriesCatalogSummary => SelectedSeries?.CatalogSummary ?? "No catalog match details available yet.";
 
-    public string SelectedSeriesMissingSummary => SelectedSeries?.MissingSummary ?? "No missing-episode summary available yet.";
+    public string SelectedSeriesMissingSummary => BuildSelectedSeriesMissingSummary();
 
-    public string SelectedSeriesMissingEpisodePreview => SelectedSeries?.MissingEpisodePreviewSummary ?? "No missing-episode preview available.";
+    public string SelectedSeriesMissingEpisodePreview => BuildSelectedSeriesMissingEpisodePreview();
 
     public string SelectedSeriesUnparseableSummary => SelectedSeries?.UnparseableSummary ?? "No unparseable files to display.";
 
@@ -256,7 +260,14 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
     partial void OnExcludeSeasonZeroOnlyMissingSeriesChanged(bool value)
     {
+        RefreshAggregateSummary();
         OnPropertyChanged(nameof(FilteredSeries));
+        OnPropertyChanged(nameof(SelectedSeriesMissingSummary));
+        OnPropertyChanged(nameof(SelectedSeriesMissingEpisodePreview));
+        OnPropertyChanged(nameof(QueueMissingDownloadsToolTip));
+        CheckUsenetCommand.NotifyCanExecuteChanged();
+        QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
+        QueueSelectedSeriesQueueStatusRefresh();
         if (SelectedSeries is not null && !ShouldIncludeSeriesInInventory(SelectedSeries))
             SelectedSeries = FilteredSeries.FirstOrDefault();
     }
@@ -315,6 +326,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         OnPropertyChanged(nameof(QueueModeStatusDetail));
         OnPropertyChanged(nameof(QueueMissingDownloadsToolTip));
         QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
+        QueueSelectedSeriesQueueStatusRefresh();
     }
 
     partial void OnSabnzbdApiKeyChanged(string value)
@@ -326,6 +338,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         OnPropertyChanged(nameof(QueueModeStatusDetail));
         OnPropertyChanged(nameof(QueueMissingDownloadsToolTip));
         QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
+        QueueSelectedSeriesQueueStatusRefresh();
     }
 
     partial void OnLibraryPathChanged(string value)
@@ -335,6 +348,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
     partial void OnSelectedSeriesChanged(SeriesAuditItemViewModel? value)
     {
+        _queuedMissingEpisodeKeys.Clear();
         OnPropertyChanged(nameof(SelectedSeriesTitle));
         OnPropertyChanged(nameof(SelectedSeriesSummary));
         OnPropertyChanged(nameof(SelectedSeriesCatalogSummary));
@@ -352,6 +366,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         ClearEpisodeAttemptHistoryCommand.NotifyCanExecuteChanged();
         PendingDeleteSeriesCommand.NotifyCanExecuteChanged();
         ConfirmDeleteSeriesCommand.NotifyCanExecuteChanged();
+        QueueSelectedSeriesQueueStatusRefresh();
     }
 
     private bool CanRunInventory() => !IsBusy && !string.IsNullOrWhiteSpace(LibraryPath);
@@ -365,17 +380,17 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     private bool CanLoadLastRun() => !IsBusy && _repository is not null && !string.IsNullOrWhiteSpace(LibraryPath);
 
     private bool CanCheckUsenet() => !IsBusy && !IsCheckingUsenet && IsNzbSearchConfigured
-        && SelectedSeries is { HasMissingEpisodes: true };
+        && HasVisibleMissingEpisodes(SelectedSeries);
 
     private bool CanQueueMissingDownloads() => !IsBusy && !IsQueueingDownloads && IsQueueDownloadsConfigured
-        && SelectedSeries is { HasMissingEpisodes: true };
+        && HasVisibleMissingEpisodes(SelectedSeries);
 
     private bool CanClearActivityLog() => !IsBusy && ActivityLog.Count > 0;
 
     public string QueueMissingDownloadsToolTip =>
         !IsNzbSearchConfigured ? "Enter an NZBPlanet API key to enable Usenet search."
         : !IsQueueDownloadsConfigured ? "Enter either SABnzbd URL + API key for direct queueing or a SABnzbd watch folder for file-drop queueing."
-        : SelectedSeries is not { HasMissingEpisodes: true } ? "No missing episodes for this series."
+        : !HasVisibleMissingEpisodes(SelectedSeries) ? "No missing episodes for this series."
         : IsDirectSabQueueConfigured
             ? "Search NZBPlanet, skip previously sent releases and SABnzbd failures, and queue the best release directly in SABnzbd."
             : IsSabHistoryConfigured
@@ -383,6 +398,193 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                 : "Search NZBPlanet for each missing episode and save the best NZB to the watch folder.";
 
     private bool CanModifySeries() => SelectedSeries is not null && !IsBusy;
+
+    private void QueueSelectedSeriesQueueStatusRefresh()
+    {
+        _selectedSeriesQueueStatusCts?.Cancel();
+        _selectedSeriesQueueStatusCts?.Dispose();
+        _selectedSeriesQueueStatusCts = new CancellationTokenSource();
+        _ = RefreshSelectedSeriesQueueStatusAsync(_selectedSeriesQueueStatusCts.Token);
+    }
+
+    private async Task RefreshSelectedSeriesQueueStatusAsync(CancellationToken ct)
+    {
+        _queuedMissingEpisodeKeys.Clear();
+        OnPropertyChanged(nameof(SelectedSeriesMissingEpisodePreview));
+
+        if (SelectedSeries is null
+            || !IsSabHistoryConfigured
+            || _nzbDownloadHistory is null
+            || string.IsNullOrWhiteSpace(LibraryPath))
+            return;
+
+        var visibleEpisodes = GetVisibleMissingEpisodes(SelectedSeries).Take(10).ToList();
+        if (visibleEpisodes.Count == 0)
+            return;
+
+        try
+        {
+            using var client = new SabnzbdHistoryClient(
+                SabnzbdUrl.Trim(),
+                SabnzbdApiKey.Trim());
+
+            var queuedNzoIds = await client.GetQueuedNzoIdsAsync(
+                string.IsNullOrWhiteSpace(NzbCategory) ? null : NzbCategory.Trim(),
+                ct);
+
+            foreach (var episode in visibleEpisodes)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var attempts = await GetEpisodeAttemptsAsync(SelectedSeries, episode.Key, ct);
+                if (attempts.Any(attempt => !string.IsNullOrWhiteSpace(attempt.SabNzoId)
+                    && queuedNzoIds.Contains(attempt.SabNzoId!)))
+                {
+                    _queuedMissingEpisodeKeys.Add(episode.Key);
+                }
+            }
+
+            OnPropertyChanged(nameof(SelectedSeriesMissingEpisodePreview));
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            AddActivity($"Unable to refresh SABnzbd queue state: {ex.Message}");
+        }
+    }
+
+    private IReadOnlyList<SeriesAuditItemViewModel> GetSummarySeries() =>
+        ExcludeSeasonZeroOnlyMissingSeries
+            ? Series.Where(static series => !series.HasOnlySeasonZeroMissingEpisodes).ToList()
+            : Series.ToList();
+
+    private void RefreshAggregateSummary()
+    {
+        var summarySeries = GetSummarySeries();
+
+        SeriesCount = summarySeries.Count;
+        ReadySeriesCount = summarySeries.Count(static series => series.Status == AuditSeriesStatus.ReadyForCatalogLookup);
+        PartialSeriesCount = summarySeries.Count(static series => series.Status == AuditSeriesStatus.PartialInventory);
+        NoParsedEpisodeSeriesCount = summarySeries.Count(static series => series.Status == AuditSeriesStatus.NoParsedEpisodes);
+        ParsedEpisodeCount = summarySeries.Sum(static series => series.ParsedEpisodeCount);
+        UnparseableFileCount = summarySeries.Sum(static series => series.UnparseableFileCount);
+        CatalogMatchedSeriesCount = summarySeries.Count(static series => series.Item.CatalogStatus == CatalogLookupStatus.Matched);
+        CatalogAmbiguousSeriesCount = summarySeries.Count(static series => series.Item.CatalogStatus == CatalogLookupStatus.Ambiguous);
+        CatalogErrorSeriesCount = summarySeries.Count(static series => series.Item.CatalogStatus == CatalogLookupStatus.Error);
+        SeriesWithMissingEpisodesCount = summarySeries.Count(HasVisibleMissingEpisodes);
+        MissingEpisodeCount = summarySeries.Sum(GetVisibleMissingEpisodeCount);
+        ErrorCount = Errors.Count;
+        LastRunSummary = BuildLastRunSummary();
+        OnPropertyChanged(nameof(HasResults));
+        OnPropertyChanged(nameof(RunSummaryLine));
+    }
+
+    private string BuildLastRunSummary()
+    {
+        if (Series.Count == 0)
+            return "No inventory runs yet.";
+
+        if (SeriesCount == 0)
+            return "No series match the current specials filter.";
+
+        return SelectedCatalogProvider == CatalogProviderKind.None
+            ? $"Series {SeriesCount} • Ready {ReadySeriesCount} • Partial {PartialSeriesCount} • No parsed episodes {NoParsedEpisodeSeriesCount}"
+            : $"Series {SeriesCount} • Catalog matched {CatalogMatchedSeriesCount} • Missing episodes {MissingEpisodeCount} • Ambiguous {CatalogAmbiguousSeriesCount}";
+    }
+
+    private int GetVisibleMissingEpisodeCount(SeriesAuditItemViewModel? series)
+    {
+        if (series is null)
+            return 0;
+
+        if (!ExcludeSeasonZeroOnlyMissingSeries)
+            return series.Item.MissingEpisodeCount;
+
+        return series.Item.MissingEpisodeKeys.Count(key => !IsSeasonZeroEpisodeKey(key));
+    }
+
+    private IReadOnlyList<MissingEpisodeInfo> GetVisibleMissingEpisodes(SeriesAuditItemViewModel? series)
+    {
+        if (series is null)
+            return [];
+
+        if (!ExcludeSeasonZeroOnlyMissingSeries)
+            return series.Item.MissingEpisodes;
+
+        return series.Item.MissingEpisodes
+            .Where(static episode => !IsSeasonZeroEpisodeKey(episode.Key))
+            .ToList();
+    }
+
+    private IReadOnlyList<string> GetVisibleMissingEpisodeKeys(SeriesAuditItemViewModel? series)
+    {
+        if (series is null)
+            return [];
+
+        if (!ExcludeSeasonZeroOnlyMissingSeries)
+            return series.Item.MissingEpisodeKeys;
+
+        return series.Item.MissingEpisodeKeys
+            .Where(static key => !IsSeasonZeroEpisodeKey(key))
+            .ToList();
+    }
+
+    private bool HasVisibleMissingEpisodes(SeriesAuditItemViewModel? series) => GetVisibleMissingEpisodeCount(series) > 0;
+
+    private string BuildSelectedSeriesMissingSummary()
+    {
+        if (SelectedSeries is null)
+            return "No missing-episode summary available yet.";
+
+        var visibleCount = GetVisibleMissingEpisodeCount(SelectedSeries);
+        if (visibleCount == 0)
+        {
+            return SelectedSeries.HasMissingEpisodes && ExcludeSeasonZeroOnlyMissingSeries
+                ? "No missing aired episodes after excluding specials."
+                : "No missing aired episodes detected yet.";
+        }
+
+        return $"{visibleCount} missing aired episode{(visibleCount == 1 ? string.Empty : "s")} detected.";
+    }
+
+    private string BuildSelectedSeriesMissingEpisodePreview()
+    {
+        if (SelectedSeries is null)
+            return "No missing-episode preview available.";
+
+        var visibleEpisodes = GetVisibleMissingEpisodes(SelectedSeries);
+        if (visibleEpisodes.Count == 0)
+        {
+            return SelectedSeries.HasMissingEpisodes && ExcludeSeasonZeroOnlyMissingSeries
+                ? "No missing aired episodes after excluding specials."
+                : "No missing aired episodes found.";
+        }
+
+        return FormatMissingEpisodePreviewSummary(visibleEpisodes, _queuedMissingEpisodeKeys);
+    }
+
+    private static string FormatMissingEpisodePreviewSummary(
+        IReadOnlyList<MissingEpisodeInfo> missingEpisodes,
+        IReadOnlySet<string> queuedEpisodeKeys)
+    {
+        var previewEpisodes = missingEpisodes.Take(10).ToList();
+        return string.Join(Environment.NewLine, previewEpisodes.Select(episode =>
+        {
+            var baseText = episode.AirDate.HasValue
+                ? $"{episode.Key}  {episode.Title}  ({episode.AirDate.Value:yyyy-MM-dd})"
+                : string.IsNullOrWhiteSpace(episode.Title) ? episode.Key : $"{episode.Key}  {episode.Title}";
+
+            return queuedEpisodeKeys.Contains(episode.Key)
+                ? baseText + "  [Queued in SAB]"
+                : baseText;
+        }))
+            + (missingEpisodes.Count > previewEpisodes.Count ? Environment.NewLine + "..." : string.Empty);
+    }
+
+    private static bool IsSeasonZeroEpisodeKey(string episodeKey) =>
+        episodeKey.StartsWith("S00", StringComparison.OrdinalIgnoreCase);
 
     private async Task RunInventoryAsync(CancellationToken ct = default)
     {
@@ -459,28 +661,11 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
             AddError(error, includeInActivityLog: false);
         }
 
-        SeriesCount = result.Summary.SeriesScanned;
-        ReadySeriesCount = result.Summary.ReadySeries;
-        PartialSeriesCount = result.Summary.PartialSeries;
-        NoParsedEpisodeSeriesCount = result.Summary.NoParsedEpisodeSeries;
-        ParsedEpisodeCount = result.Summary.ParsedEpisodeCount;
-        UnparseableFileCount = result.Summary.UnparseableFileCount;
-        CatalogMatchedSeriesCount = result.Summary.CatalogMatchedSeries;
-        CatalogAmbiguousSeriesCount = result.Summary.CatalogAmbiguousSeries;
-        CatalogErrorSeriesCount = result.Summary.CatalogErrorSeries;
-        SeriesWithMissingEpisodesCount = result.Summary.SeriesWithMissingEpisodes;
-        MissingEpisodeCount = result.Summary.MissingEpisodeCount;
-        ErrorCount = Errors.Count;
-        LastRunSummary =
-            SelectedCatalogProvider == CatalogProviderKind.None
-                ? $"Series {SeriesCount} • Ready {ReadySeriesCount} • Partial {PartialSeriesCount} • No parsed episodes {NoParsedEpisodeSeriesCount}"
-                : $"Series {SeriesCount} • Catalog matched {CatalogMatchedSeriesCount} • Missing episodes {MissingEpisodeCount} • Ambiguous {CatalogAmbiguousSeriesCount}";
+        RefreshAggregateSummary();
         SelectedSeries = FilteredSeries.FirstOrDefault();
         ClearInventoryCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(FilteredSeries));
         IsAuditControlsExpanded = false;
-        OnPropertyChanged(nameof(HasResults));
-        OnPropertyChanged(nameof(RunSummaryLine));
         _lastRunResult = result;
     }
 
@@ -566,19 +751,22 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
             var sabRetryNzoIdsByEpisode = await LoadSabRetryNzoIdsByEpisodeAsync(SelectedSeries);
             using var checker = new NzbPlanetAvailabilityChecker(NzbApiKey.Trim(),
                 log: AddActivity);
-            foreach (var ep in SelectedSeries.Item.MissingEpisodes)
+            foreach (var ep in GetVisibleMissingEpisodes(SelectedSeries))
             {
                 var results = await checker.SearchAsync(
                     SelectedSeries.Item.OriginalTitle,
                     ParseSeason(ep.Key),
                     ParseEpisode(ep.Key));
+                var sizeEligibleResults = results
+                    .Where(NzbPlanetAvailabilityChecker.IsWithinPreferredSizeLimit)
+                    .ToList();
 
                 var attempts = await GetEpisodeAttemptsAsync(SelectedSeries, ep.Key);
                 var attemptedReleaseKeys = BuildComparableReleaseKeySet(attempts);
                 var sabFailedReleaseKeys = GetReleaseKeysForEpisode(sabFailedReleaseKeysByEpisode, ep.Key);
                 var retryableSabNzoIds = GetRetryNzoIdsForEpisode(sabRetryNzoIdsByEpisode, ep.Key);
                 var excludedReleaseKeys = BuildComparableReleaseKeySet(attemptedReleaseKeys, sabFailedReleaseKeys);
-                var availableFreshCount = results.Count(result => !NzbReleaseIdentity.GetComparableReleaseKeys(result)
+                var availableFreshCount = sizeEligibleResults.Count(result => !NzbReleaseIdentity.GetComparableReleaseKeys(result)
                     .Any(excludedReleaseKeys.Contains));
 
                 NzbResults.Add(new NzbEpisodeResultViewModel(
@@ -593,7 +781,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                     attempts.Count > 0 ? () => ClearEpisodeAttemptHistoryAsync(ep.Key) : null,
                     retryableSabNzoIds.Count > 0 ? () => RetryFailedSabJobAsync(ep.Key, retryableSabNzoIds) : null));
 
-                AddActivity($"{ep.Key} → {results.Count} NZB(s) found, {availableFreshCount} untried after history filtering.");
+                AddActivity($"{ep.Key} → {results.Count} NZB(s) found, {availableFreshCount} within 2 GB and untried after history filtering.");
             }
 
             OnPropertyChanged(nameof(HasNzbResults));
@@ -638,12 +826,15 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                     log: AddActivity)
                 : null;
 
-            foreach (var ep in series.Item.MissingEpisodes)
+            foreach (var ep in GetVisibleMissingEpisodes(series))
             {
                 var results = await checker.SearchAsync(
                     series.Item.OriginalTitle,
                     ParseSeason(ep.Key),
                     ParseEpisode(ep.Key));
+                var sizeEligibleResults = results
+                    .Where(NzbPlanetAvailabilityChecker.IsWithinPreferredSizeLimit)
+                    .ToList();
 
                 var attempts = await GetEpisodeAttemptsAsync(series, ep.Key);
                 var attemptedReleaseKeys = BuildComparableReleaseKeySet(attempts);
@@ -653,10 +844,15 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                 var preferred = NzbPlanetAvailabilityChecker.SelectPreferred(results, excludedReleaseKeys);
                 if (preferred is null || string.IsNullOrWhiteSpace(preferred.DownloadUrl))
                 {
-                    if (results.Count > 0 && excludedReleaseKeys.Count > 0)
+                    if (sizeEligibleResults.Count > 0 && excludedReleaseKeys.Count > 0)
                     {
                         alreadyAttempted++;
-                        AddActivity($"{ep.Key} → all {results.Count} NZB(s) were already sent before or failed in SABnzbd.");
+                        AddActivity($"{ep.Key} → all {sizeEligibleResults.Count} eligible NZB(s) were already sent before or failed in SABnzbd.");
+                    }
+                    else if (results.Count > 0 && sizeEligibleResults.Count == 0)
+                    {
+                        notFound++;
+                        AddActivity($"{ep.Key} → all {results.Count} NZB(s) exceed the 2 GB limit.");
                     }
                     else
                     {
@@ -724,6 +920,8 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                 : sabClient is not null
                     ? $"Queued {queued} of {queued + notFound} release(s) directly in SABnzbd."
                     : $"Saved {queued} of {queued + notFound} NZBs to {NzbWatchFolder}.";
+
+            QueueSelectedSeriesQueueStatusRefresh();
         }
         catch (Exception ex)
         {
@@ -786,6 +984,8 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         if (GetReleaseKeysForEpisode(sabFailedReleaseKeysByEpisode, episodeKey).Count > 0)
             AddActivity($"{episodeKey} → SABnzbd still reports failed releases for this episode, so those releases remain filtered.");
 
+        QueueSelectedSeriesQueueStatusRefresh();
+
         if (CanCheckUsenet())
             await CheckUsenetAsync();
     }
@@ -810,7 +1010,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
         return SabnzbdHistoryMatcher.BuildFailedReleaseKeysByEpisode(
             series.Item.NormalizedTitle,
-            series.Item.MissingEpisodeKeys,
+            GetVisibleMissingEpisodeKeys(series),
             failedHistory);
     }
 
@@ -832,7 +1032,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
         return SabnzbdHistoryMatcher.BuildFailedNzoIdsByEpisode(
             series.Item.NormalizedTitle,
-            series.Item.MissingEpisodeKeys,
+            GetVisibleMissingEpisodeKeys(series),
             failedHistory);
     }
 
@@ -997,9 +1197,7 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
             }
 
             StatusMessage = $"Deleted {series.DisplayTitle}.";
-            SeriesCount = Series.Count;
-            OnPropertyChanged(nameof(HasResults));
-            OnPropertyChanged(nameof(RunSummaryLine));
+            RefreshAggregateSummary();
             ClearInventoryCommand.NotifyCanExecuteChanged();
         }
         catch (Exception ex)
