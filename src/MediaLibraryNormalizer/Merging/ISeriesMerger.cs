@@ -28,6 +28,15 @@ public interface ISeriesMerger
     Task<List<MergeOperation>> DeduplicateTopLevelMovieFilesAsync(string libraryRoot, bool dryRun);
 
     /// <summary>
+    /// Move parseable episode files already in the library root into
+    /// {SeriesTitle}/Season {N}/.
+    /// </summary>
+    Task<List<MergeOperation>> FlattenTopLevelEpisodeFilesAsync(
+        string libraryRoot,
+        IReadOnlyList<MediaItem> items,
+        bool dryRun);
+
+    /// <summary>
     /// Move video files from per-episode release folders at the library root into
     /// {SeriesTitle}/Season {N}/ and let the empty-folder sweep clean up afterward.
     /// </summary>

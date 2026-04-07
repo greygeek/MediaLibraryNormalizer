@@ -756,7 +756,9 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                 var results = await checker.SearchAsync(
                     SelectedSeries.Item.OriginalTitle,
                     ParseSeason(ep.Key),
-                    ParseEpisode(ep.Key));
+                    ParseEpisode(ep.Key),
+                    tvMazeId: SelectedSeries.Item.CatalogProvider == CatalogProviderKind.TvMaze ? SelectedSeries.Item.CatalogSourceId : null,
+                    tvdbId: SelectedSeries.Item.CatalogProvider == CatalogProviderKind.TheTvdb ? SelectedSeries.Item.CatalogSourceId : null);
                 var sizeEligibleResults = results
                     .Where(NzbPlanetAvailabilityChecker.IsWithinPreferredSizeLimit)
                     .ToList();
@@ -766,6 +768,15 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                 var sabFailedReleaseKeys = GetReleaseKeysForEpisode(sabFailedReleaseKeysByEpisode, ep.Key);
                 var retryableSabNzoIds = GetRetryNzoIdsForEpisode(sabRetryNzoIdsByEpisode, ep.Key);
                 var excludedReleaseKeys = BuildComparableReleaseKeySet(attemptedReleaseKeys, sabFailedReleaseKeys);
+
+                // Debug logging for release key filtering
+                if (attemptedReleaseKeys.Count > 0)
+                    AddActivity($"{ep.Key} → Attempted release keys: [{string.Join(", ", attemptedReleaseKeys)}]");
+                if (sabFailedReleaseKeys.Count > 0)
+                    AddActivity($"{ep.Key} → SABnzbd failed release keys: [{string.Join(", ", sabFailedReleaseKeys)}]");
+                if (excludedReleaseKeys.Count > 0)
+                    AddActivity($"{ep.Key} → Excluded release keys: [{string.Join(", ", excludedReleaseKeys)}]");
+
                 var availableFreshCount = sizeEligibleResults.Count(result => !NzbReleaseIdentity.GetComparableReleaseKeys(result)
                     .Any(excludedReleaseKeys.Contains));
 
@@ -831,7 +842,9 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                 var results = await checker.SearchAsync(
                     series.Item.OriginalTitle,
                     ParseSeason(ep.Key),
-                    ParseEpisode(ep.Key));
+                    ParseEpisode(ep.Key),
+                    tvMazeId: series.Item.CatalogProvider == CatalogProviderKind.TvMaze ? series.Item.CatalogSourceId : null,
+                    tvdbId: series.Item.CatalogProvider == CatalogProviderKind.TheTvdb ? series.Item.CatalogSourceId : null);
                 var sizeEligibleResults = results
                     .Where(NzbPlanetAvailabilityChecker.IsWithinPreferredSizeLimit)
                     .ToList();
@@ -840,6 +853,19 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
                 var attemptedReleaseKeys = BuildComparableReleaseKeySet(attempts);
                 var sabFailedReleaseKeys = GetReleaseKeysForEpisode(sabFailedReleaseKeysByEpisode, ep.Key);
                 var excludedReleaseKeys = BuildComparableReleaseKeySet(attemptedReleaseKeys, sabFailedReleaseKeys);
+
+                // Debug logging for release keys
+                if (attemptedReleaseKeys.Count > 0)
+                    AddActivity($"{ep.Key} → Attempted release keys: [{string.Join(", ", attemptedReleaseKeys)}]");
+                if (sabFailedReleaseKeys.Count > 0)
+                    AddActivity($"{ep.Key} → SABnzbd failed release keys: [{string.Join(", ", sabFailedReleaseKeys)}]");
+                if (excludedReleaseKeys.Count > 0)
+                    AddActivity($"{ep.Key} → Excluded release keys: [{string.Join(", ", excludedReleaseKeys)}]");
+                foreach (var result in sizeEligibleResults)
+                {
+                    var candidateKeys = NzbReleaseIdentity.GetComparableReleaseKeys(result);
+                    AddActivity($"{ep.Key} → Candidate NZB: '{result.Title}' keys: [{string.Join(", ", candidateKeys)}]");
+                }
 
                 var preferred = NzbPlanetAvailabilityChecker.SelectPreferred(results, excludedReleaseKeys);
                 if (preferred is null || string.IsNullOrWhiteSpace(preferred.DownloadUrl))

@@ -138,7 +138,7 @@ public static class SabnzbdHistoryMatcher
         if (!int.TryParse(parts[1], out var seasonNumber) || !int.TryParse(parts[2], out var episodeNumber))
             return false;
 
-        normalizedSeriesTitle = Normalizer.Normalize(parts[0], isFilename: true).Title;
+        normalizedSeriesTitle = Normalizer.Normalize(parts[0], isFilename: false).Title;
         episodeKeys = [$"S{seasonNumber:D2}E{episodeNumber:D2}"];
         return !string.IsNullOrWhiteSpace(normalizedSeriesTitle);
     }

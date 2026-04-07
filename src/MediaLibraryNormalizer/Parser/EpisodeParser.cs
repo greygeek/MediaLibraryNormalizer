@@ -27,6 +27,11 @@ public partial class EpisodeParser : IEpisodeParser
     [GeneratedRegex(@"Season\s+(\d+)\s+Episode\s+(\d+)", RegexOptions.IgnoreCase)]
     private static partial Regex VerboseFormatRegex();
 
+    // Episode-only format: E1 / E01 / EP01. Season is resolved from the path when possible,
+    // otherwise callers can treat it as Season 1 for flat mini-series style releases.
+    [GeneratedRegex(@"(?:^|[\s._\-])E(?:P)?(\d{1,4})(?=$|[\s._\-])", RegexOptions.IgnoreCase)]
+    private static partial Regex EpisodeOnlyRegex();
+
     // Metadata extraction patterns
     [GeneratedRegex(@"\b(2160p|1080p|720p|480p|576p|4k)\b", RegexOptions.IgnoreCase)]
     private static partial Regex ResolutionRegex();
@@ -60,7 +65,11 @@ public partial class EpisodeParser : IEpisodeParser
 
         var (season, episodes) = ParseSeasonEpisode(fileName);
         if (season < 0 && episodes.Count > 0)
+        {
             season = ExtractSeasonFromPath(filePath);
+            if (season < 0 && EpisodeOnlyRegex().IsMatch(fileName))
+                season = 1;
+        }
 
         // Fallback: if the filename itself carries no episode info (e.g. a hash-named file),
         // try parsing the immediate parent folder name (e.g. New.Amsterdam.2018.S03E05.…).
@@ -171,6 +180,13 @@ public partial class EpisodeParser : IEpisodeParser
                     [int.Parse(verboseMatch.Groups[2].Value)]);
         }
 
+        // Try episode-only token: E1 / E01 / EP01.
+        var episodeOnlyMatch = EpisodeOnlyRegex().Match(fileName);
+        if (episodeOnlyMatch.Success)
+        {
+            return (-1, [int.Parse(episodeOnlyMatch.Groups[1].Value)]);
+        }
+
         // Try NofM: "04of10" — episode-only; season is resolved from the folder path in Parse()
         var nofMMatch = NofMRegex().Match(fileName);
         if (nofMMatch.Success)
@@ -246,7 +262,7 @@ public partial class EpisodeParser : IEpisodeParser
     public string? ExtractSeriesTitle(string folderName)
     {
         // Find the episode token using each format in priority order
-        Regex[] patterns = [CrossSeasonRangeRegex(), MultiEpisodeRegex(), AltFormatRegex(), VerboseFormatRegex()];
+        Regex[] patterns = [CrossSeasonRangeRegex(), MultiEpisodeRegex(), AltFormatRegex(), VerboseFormatRegex(), EpisodeOnlyRegex()];
         Match? earliest = null;
         foreach (var pattern in patterns)
         {
@@ -288,7 +304,7 @@ public partial class EpisodeParser : IEpisodeParser
     {
         var epTag = $"S{info.Season:D2}E{string.Join("E", info.Episodes.Select(e => e.ToString("D2")))}";
 
-        foreach (var regex in new Regex[] { CrossSeasonRangeRegex(), MultiEpisodeRegex(), AltFormatRegex(), VerboseFormatRegex(), NofMRegex() })
+        foreach (var regex in new Regex[] { CrossSeasonRangeRegex(), MultiEpisodeRegex(), AltFormatRegex(), VerboseFormatRegex(), EpisodeOnlyRegex(), NofMRegex() })
         {
             var m = regex.Match(fileName);
             if (m.Success)

@@ -20,6 +20,10 @@
     // Catalog settings
     "TheTvdbApiKey": "69B6163BEDB649.38042262",
     "NzbApiKey": null,
+    "NzbWatchFolder": "F:\\NZB\\Watch",
+    "NzbCategory": "TV",
+    "SabnzbdUrl": "http://127.0.0.1:8080/sabnzbd",
+    "SabnzbdApiKey": "0b5ca53158e2443ba82daf514d6138e1",
     // AI settings
     // Prefer setting the API key via environment variable: NORMALIZER_AI_KEY
     "AiEndpoint": "https://api.openai.com/v1/chat/completions",

@@ -56,6 +56,8 @@ public class SeriesAuditItem
 
     public CatalogProviderKind CatalogProvider { get; init; }
 
+    public string? CatalogSourceId { get; init; }
+
     public CatalogLookupStatus CatalogStatus { get; init; }
 
     public string CatalogStatusMessage { get; init; } = string.Empty;

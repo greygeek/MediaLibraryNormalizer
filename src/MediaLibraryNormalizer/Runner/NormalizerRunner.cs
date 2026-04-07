@@ -38,11 +38,29 @@ public class NormalizerRunner : INormalizerRunner
         var approvedCleanupFolderCount = 0;
         var globalCleanupSweepFolderCount = 0;
 
+        List<MediaItem> ScanAndNormalizeItems()
+        {
+            var scannedItems = scanner.Scan(config.LibraryPath).ToList();
+
+            foreach (var item in scannedItems)
+            {
+                var normalized = item.IsUnpackFolder
+                    ? normalizer.NormalizeUnpackFolder(item.OriginalName)
+                    : normalizer.Normalize(item.OriginalName);
+
+                item.NormalizedName = normalized.Title;
+                item.Year = normalized.Year;
+                item.Kind = ClassifyMediaKind(item, episodeParser);
+            }
+
+            return scannedItems;
+        }
+
         progress?.Report("Scanning library...");
         cancellationToken.ThrowIfCancellationRequested();
 
         var scanResult = new ScanResult();
-        var items = scanner.Scan(config.LibraryPath).ToList();
+        var items = ScanAndNormalizeItems();
         var topLevelVideoFileCount = CountTopLevelVideoFiles(config.LibraryPath, fileDetector);
         scanResult.AllItems = items;
         scanResult.TotalFolders = items.Count + (topLevelVideoFileCount > 0 ? 1 : 0);
@@ -55,18 +73,7 @@ public class NormalizerRunner : INormalizerRunner
             scanResult.TotalFiles);
 
         progress?.Report("Normalizing folder names...");
-        foreach (var item in items)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var normalized = item.IsUnpackFolder
-                ? normalizer.NormalizeUnpackFolder(item.OriginalName)
-                : normalizer.Normalize(item.OriginalName);
-
-            item.NormalizedName = normalized.Title;
-            item.Year = normalized.Year;
-            item.Kind = ClassifyMediaKind(item, episodeParser);
-        }
+        cancellationToken.ThrowIfCancellationRequested();
 
         progress?.Report("Matching duplicate series...");
         cancellationToken.ThrowIfCancellationRequested();
@@ -128,25 +135,22 @@ public class NormalizerRunner : INormalizerRunner
 
         if (config.FlattenEpisodeReleaseFolders)
         {
+            progress?.Report("Moving top-level episode files...");
+            cancellationToken.ThrowIfCancellationRequested();
+            items = ScanAndNormalizeItems();
+            var topLevelEpisodeOps = await merger.FlattenTopLevelEpisodeFilesAsync(config.LibraryPath, items, config.DryRun);
+            allOperations.AddRange(topLevelEpisodeOps);
+
             progress?.Report("Flattening episode release folders...");
             cancellationToken.ThrowIfCancellationRequested();
+            items = ScanAndNormalizeItems();
             var episodeFlattenOps = await merger.FlattenEpisodeReleaseFoldersAsync(items, config.LibraryPath, config.DryRun);
             allOperations.AddRange(episodeFlattenOps);
 
             progress?.Report("Flattening orphaned series folders...");
             cancellationToken.ThrowIfCancellationRequested();
-            // Re-scan so earlier moves are reflected in the items list
-            var refreshedItems = scanner.Scan(config.LibraryPath).ToList();
-            foreach (var refreshed in refreshedItems)
-            {
-                var normalized = refreshed.IsUnpackFolder
-                    ? normalizer.NormalizeUnpackFolder(refreshed.OriginalName)
-                    : normalizer.Normalize(refreshed.OriginalName);
-                refreshed.NormalizedName = normalized.Title;
-                refreshed.Year = normalized.Year;
-                refreshed.Kind = ClassifyMediaKind(refreshed, episodeParser);
-            }
-            var orphanFlattenOps = await merger.FlattenOrphanedSeriesFoldersAsync(refreshedItems, config.LibraryPath, config.DryRun);
+            items = ScanAndNormalizeItems();
+            var orphanFlattenOps = await merger.FlattenOrphanedSeriesFoldersAsync(items, config.LibraryPath, config.DryRun);
             allOperations.AddRange(orphanFlattenOps);
 
             // The flatten phases may have created new Season N subfolders inside an existing
@@ -155,17 +159,8 @@ public class NormalizerRunner : INormalizerRunner
             // pairs are merged and the canonical zero-padded name is preserved.
             progress?.Report("Merging season sub-folders created by flatten...");
             cancellationToken.ThrowIfCancellationRequested();
-            var postFlattenItems = scanner.Scan(config.LibraryPath).ToList();
-            foreach (var refreshed in postFlattenItems)
-            {
-                var normalized = refreshed.IsUnpackFolder
-                    ? normalizer.NormalizeUnpackFolder(refreshed.OriginalName)
-                    : normalizer.Normalize(refreshed.OriginalName);
-                refreshed.NormalizedName = normalized.Title;
-                refreshed.Year = normalized.Year;
-                refreshed.Kind = ClassifyMediaKind(refreshed, episodeParser);
-            }
-            var postFlattenSubfolderOps = await merger.MergeSimilarSubfoldersAsync(postFlattenItems, config.DryRun);
+            items = ScanAndNormalizeItems();
+            var postFlattenSubfolderOps = await merger.MergeSimilarSubfoldersAsync(items, config.DryRun);
             allOperations.AddRange(postFlattenSubfolderOps);
         }
 
@@ -173,6 +168,7 @@ public class NormalizerRunner : INormalizerRunner
         {
             progress?.Report("AI-assisted file organization...");
             cancellationToken.ThrowIfCancellationRequested();
+            items = ScanAndNormalizeItems();
             var aiOrganizer = serviceProvider.GetRequiredService<IAiOrganizer>();
 
             // Collect video files in small flat folders whose paths have no parseable episode token.
@@ -208,6 +204,7 @@ public class NormalizerRunner : INormalizerRunner
         {
             progress?.Report("Renaming non-standard episode filenames...");
             cancellationToken.ThrowIfCancellationRequested();
+            items = ScanAndNormalizeItems();
             foreach (var item in items.Where(static i => i.Kind == MediaKind.TvSeries))
             {
                 foreach (var videoFile in item.VideoFiles)
@@ -229,8 +226,12 @@ public class NormalizerRunner : INormalizerRunner
         {
             progress?.Report("Deleting sample files...");
             cancellationToken.ThrowIfCancellationRequested();
+            items = ScanAndNormalizeItems();
             foreach (var item in items)
             {
+                if (!Directory.Exists(item.Path))
+                    continue;
+
                 foreach (var file in Directory.EnumerateFiles(item.Path, "*.*", SearchOption.AllDirectories))
                 {
                     if (fileDetector.IsSampleVideoFile(file))
@@ -247,6 +248,7 @@ public class NormalizerRunner : INormalizerRunner
         {
             progress?.Report("Deleting non-episode video files...");
             cancellationToken.ThrowIfCancellationRequested();
+            items = ScanAndNormalizeItems();
             foreach (var item in items.Where(static i => i.Kind == MediaKind.TvSeries))
             {
                 foreach (var videoFile in item.VideoFiles)

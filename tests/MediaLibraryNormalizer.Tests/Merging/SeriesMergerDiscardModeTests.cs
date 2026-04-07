@@ -480,6 +480,73 @@ public class SeriesMergerDiscardModeTests : IDisposable
     }
 
     [Fact]
+    public async Task FlattenTopLevelEpisodeFilesAsync_MovesRootEpisodeIntoCanonicalSeriesSeasonFolder()
+    {
+        var libraryRoot = CreateDirectory("RootEpisodeCanonicalLibRoot");
+        var canonicalSeriesDir = Directory.CreateDirectory(Path.Combine(libraryRoot, "Brooklyn Nine-Nine")).FullName;
+        var rootEpisode = CreateFile(libraryRoot, "Brooklyn.Nine.Nine.S03E12.Defense.Rests.1080p.mkv");
+
+        var sut = CreateSut(new NormalizerConfig());
+
+        var canonicalItem = new MediaItem
+        {
+            Path = canonicalSeriesDir,
+            OriginalName = "Brooklyn Nine-Nine",
+            NormalizedName = "Brooklyn Nine-Nine",
+            Kind = MediaKind.TvSeries,
+            VideoFiles = [],
+            SeasonFolders = []
+        };
+
+        var ops = await sut.FlattenTopLevelEpisodeFilesAsync(libraryRoot, [canonicalItem], dryRun: true);
+
+        var expectedDest = Path.Combine(canonicalSeriesDir, "Season 3", Path.GetFileName(rootEpisode));
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Move
+            && op.Source == rootEpisode
+            && op.Destination == expectedDest);
+    }
+
+    [Fact]
+    public async Task FlattenTopLevelEpisodeFilesAsync_WithoutCanonicalSeries_CreatesSeriesFolderFromFilename()
+    {
+        var libraryRoot = CreateDirectory("RootEpisodeNewSeriesLibRoot");
+        var rootEpisode = CreateFile(libraryRoot, "Brooklyn.Nine.Nine.S04E16.Moo.Moo.mkv");
+
+        var sut = CreateSut(new NormalizerConfig());
+
+        var ops = await sut.FlattenTopLevelEpisodeFilesAsync(libraryRoot, [], dryRun: true);
+
+        var expectedDest = Path.Combine(libraryRoot, "Brooklyn Nine Nine", "Season 4", Path.GetFileName(rootEpisode));
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Move
+            && op.Source == rootEpisode
+            && op.Destination == expectedDest);
+    }
+
+    [Fact]
+    public async Task FlattenTopLevelEpisodeFilesAsync_EpisodeOnlyFilename_MovesToSeasonOne()
+    {
+        var libraryRoot = CreateDirectory("RootEpisodeOnlyLibRoot");
+        var rootEpisode = CreateFile(libraryRoot, "Pride and Prejudice (BBC - 1995) E1 1080p H.264 (moviesbyrizzo).mp4");
+
+        var sut = CreateSut(new NormalizerConfig());
+
+        var ops = await sut.FlattenTopLevelEpisodeFilesAsync(libraryRoot, [], dryRun: true);
+
+        var expectedDest = Path.Combine(
+            libraryRoot,
+            "Pride and Prejudice (BBC - 1995)",
+            "Season 1",
+            Path.GetFileName(rootEpisode));
+
+        Assert.Contains(ops, op =>
+            op.Type == OperationType.Move
+            && op.Source == rootEpisode
+            && op.Destination == expectedDest);
+    }
+
+    [Fact]
     public async Task FlattenOrphanedSeriesFoldersAsync_EpisodeTitledContainerWithSeasonSubfolder_MovesToCanonicalSeriesFolder()
     {
         // Simulate: Brooklyn Nine-Nine Defense Rests AAC5 1/Season 3/Brooklyn.Nine-Nine.S03E12.Defense.Rests.mkv

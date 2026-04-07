@@ -36,11 +36,11 @@ public sealed class SeriesAuditRunnerTests : IDisposable
         Assert.Equal(3, result.Summary.ParsedEpisodeCount);
         Assert.Equal(1, result.Summary.UnparseableFileCount);
 
-        var ahsoka = Assert.Single(result.Series.Where(series => series.NormalizedTitle == "Ahsoka"));
+        var ahsoka = Assert.Single(result.Series, series => series.NormalizedTitle == "Ahsoka");
         Assert.Equal(AuditSeriesStatus.ReadyForCatalogLookup, ahsoka.Status);
         Assert.Equal(["S01E01", "S01E02"], ahsoka.EpisodeKeys);
 
-        var andor = Assert.Single(result.Series.Where(series => series.NormalizedTitle == "Andor"));
+        var andor = Assert.Single(result.Series, series => series.NormalizedTitle == "Andor");
         Assert.Equal(AuditSeriesStatus.PartialInventory, andor.Status);
         Assert.Single(andor.UnparseableFiles);
     }

@@ -1,7 +1,12 @@
+using System.Text.RegularExpressions;
+
 namespace MediaLibraryNormalizer.Audit;
 
-public static class NzbReleaseIdentity
+public static partial class NzbReleaseIdentity
 {
+    [GeneratedRegex(@"[^a-z0-9\-]+")]
+    private static partial Regex NonAlphanumericRegex();
+
     public static string GetSeriesIdentityKey(string normalizedSeriesTitle, int? seriesYear)
     {
         var title = string.IsNullOrWhiteSpace(normalizedSeriesTitle)
@@ -42,8 +47,16 @@ public static class NzbReleaseIdentity
         return keys.ToList();
     }
 
-    public static string NormalizeReleaseTitle(string? title) =>
-        string.IsNullOrWhiteSpace(title)
-            ? string.Empty
-            : title.Trim().ToLowerInvariant();
+    public static string NormalizeReleaseTitle(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+            return string.Empty;
+
+        // Lowercase, strip all non-alphanumeric characters except hyphens (group tags),
+        // then collapse runs of hyphens. This ensures NZBPlanet titles (with dots/apostrophes)
+        // match SABnzbd history names (which strip that punctuation).
+        var lowered = title.Trim().ToLowerInvariant();
+        var cleaned = NonAlphanumericRegex().Replace(lowered, "");
+        return cleaned;
+    }
 }

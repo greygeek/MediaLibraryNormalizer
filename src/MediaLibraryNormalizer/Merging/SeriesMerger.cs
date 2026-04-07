@@ -77,6 +77,57 @@ public class SeriesMerger(
         return allOperations;
     }
 
+    public async Task<List<MergeOperation>> FlattenTopLevelEpisodeFilesAsync(
+        string libraryRoot,
+        IReadOnlyList<MediaItem> items,
+        bool dryRun)
+    {
+        var allOperations = new List<MergeOperation>();
+
+        if (!Directory.Exists(libraryRoot))
+            return allOperations;
+
+        foreach (var videoFile in Directory.EnumerateFiles(libraryRoot, "*.*", SearchOption.TopDirectoryOnly)
+                     .Where(fileDetector.IsVideoFile)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var parsed = episodeParser.Parse(videoFile);
+            if (parsed is null)
+                continue;
+
+            var rawTitle = episodeParser.ExtractSeriesTitle(Path.GetFileNameWithoutExtension(videoFile));
+            if (string.IsNullOrWhiteSpace(rawTitle))
+                continue;
+
+            var seriesTitle = ResolveCanonicalSeriesName(rawTitle, items);
+            var destDir = Path.Combine(libraryRoot, seriesTitle, $"Season {parsed.Season}");
+            var destFile = Path.Combine(destDir, Path.GetFileName(videoFile));
+
+            if (string.Equals(videoFile, destFile, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (!dryRun && File.Exists(destFile))
+                continue;
+
+            logger.LogInformation("{Action} top-level episode file: {File} → {Dest}",
+                dryRun ? "Would move" : "Moving",
+                Path.GetFileName(videoFile),
+                destDir);
+
+            allOperations.AddRange(await fileMover.MoveFileAsync(videoFile, destFile, dryRun));
+        }
+
+        if (allOperations.Count > 0)
+        {
+            logger.LogInformation(
+                "Total top-level episode file operations: {Count} (dryRun={DryRun})",
+                allOperations.Count,
+                dryRun);
+        }
+
+        return allOperations;
+    }
+
     public async Task<List<MergeOperation>> FlattenEpisodeReleaseFoldersAsync(
         IEnumerable<MediaItem> items, string libraryRoot, bool dryRun)
     {

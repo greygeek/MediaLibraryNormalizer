@@ -104,6 +104,7 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
                     : "Catalog lookup skipped because no parsed episodes were detected.";
                 string? catalogMatchedTitle = null;
                 int? catalogMatchedYear = null;
+                string? catalogSourceId = null;
                 var catalogEpisodeCount = 0;
                 var missingEpisodeKeys = new List<string>();
                 var missingEpisodes = new List<MissingEpisodeInfo>();
@@ -133,6 +134,7 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
                         catalogStatusMessage = catalogResult.StatusMessage;
                         catalogMatchedTitle = catalogResult.MatchedTitle;
                         catalogMatchedYear = catalogResult.MatchedYear;
+                        catalogSourceId = catalogResult.SourceId;
                         catalogEpisodeCount = catalogResult.CatalogEpisodeCount;
                         missingEpisodeKeys = catalogResult.MissingEpisodeKeys;
                         missingEpisodes = catalogResult.MissingEpisodes;
@@ -162,6 +164,7 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
                     UnparseableFileCount = s.UnparseableFiles.Count,
                     Status = s.Status,
                     CatalogProvider = options.CatalogProvider,
+                    CatalogSourceId = catalogSourceId,
                     CatalogStatus = catalogStatus,
                     CatalogStatusMessage = catalogStatusMessage,
                     CatalogMatchedTitle = catalogMatchedTitle,
@@ -350,6 +353,7 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
             .ToList();
 
         return CatalogEvaluationResult.Matched(
+            catalogSeries.SourceId,
             catalogSeries.Title,
             catalogSeries.Year,
             catalogEpisodeKeys.Count,
@@ -388,6 +392,8 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
 
         public required string StatusMessage { get; init; }
 
+        public string? SourceId { get; init; }
+
         public string? MatchedTitle { get; init; }
 
         public int? MatchedYear { get; init; }
@@ -425,6 +431,7 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
         };
 
         public static CatalogEvaluationResult Matched(
+            string sourceId,
             string matchedTitle,
             int? matchedYear,
             int catalogEpisodeCount,
@@ -441,6 +448,7 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
             {
                 Status = CatalogLookupStatus.Matched,
                 StatusMessage = message,
+                SourceId = sourceId,
                 MatchedTitle = matchedTitle,
                 MatchedYear = matchedYear,
                 CatalogEpisodeCount = catalogEpisodeCount,

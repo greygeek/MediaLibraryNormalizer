@@ -61,8 +61,23 @@ public sealed class NzbPlanetAvailabilityChecker : INzbAvailabilityChecker, IDis
         else if (!string.IsNullOrWhiteSpace(tvdbId))
             sb.Append($"&tvdbid={Uri.EscapeDataString(tvdbId)}");
         else
-            sb.Append($"&q={Uri.EscapeDataString(title)}");
+        {
+            // Strip trailing year disambiguation suffix (e.g. "(2021)") because
+            // NZB release names never include it and it causes zero-result searches.
+            var searchTitle = SanitizeSearchTitle(title);
+            sb.Append($"&q={Uri.EscapeDataString(searchTitle)}");
+        }
         return sb.ToString();
+    }
+
+    private static string SanitizeSearchTitle(string title)
+    {
+        var result = title.Trim();
+        // Strip trailing year disambiguation suffix (e.g. "(2021)") — NZB releases never include it.
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s*\(\d{4}\)\s*$", "");
+        // Remove apostrophes/curly quotes — NZB release names omit them (e.g. "Foyle's War" → "Foyles War").
+        result = result.Replace("'", "").Replace("\u2019", "");
+        return result;
     }
 
     private static IReadOnlyList<NzbSearchResult> ParseRssItems(string xml)

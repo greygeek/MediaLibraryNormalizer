@@ -78,6 +78,17 @@ public class EpisodeParserTests
         Assert.Equal(expectedFileName, Path.GetFileName(result));
     }
 
+    [Fact]
+    public void TryNormalizeFilename_EpisodeOnlyFormat_ReturnsStandardisedPath()
+    {
+        var result = _sut.TryNormalizeFilename(@"F:\TV\Pride and Prejudice\Pride and Prejudice (BBC - 1995) E1 1080p H.264 (moviesbyrizzo).mp4");
+
+        Assert.NotNull(result);
+        Assert.Equal(
+            "Pride and Prejudice (BBC - 1995) S01E01 1080p H.264 (moviesbyrizzo).mp4",
+            Path.GetFileName(result));
+    }
+
     [Theory]
     [InlineData(@"F:\TV\Some Show\Season 1\S01E01.mkv")]
     [InlineData(@"F:\TV\Some Show\Season 1\Show.Name.S03E15.HDTV.mkv")]
@@ -139,6 +150,21 @@ public class EpisodeParserTests
         string fileName, int expectedSeason, int expectedEpisode)
     {
         var result = _sut.Parse(fileName);
+
+        Assert.NotNull(result);
+        Assert.Equal(expectedSeason, result.Season);
+        Assert.Equal([expectedEpisode], result.Episodes);
+    }
+
+    // === Episode-only format: E1 / E01 ===
+
+    [Theory]
+    [InlineData(@"F:\TV\Pride and Prejudice (BBC - 1995) E1 1080p H.264 (moviesbyrizzo).mp4", 1, 1)]
+    [InlineData(@"F:\TV\Some Show\Season 2\Episode Title E03.mkv", 2, 3)]
+    public void Parse_EpisodeOnlyFormat_UsesSeasonFolderOrDefaultsToSeasonOne(
+        string filePath, int expectedSeason, int expectedEpisode)
+    {
+        var result = _sut.Parse(filePath);
 
         Assert.NotNull(result);
         Assert.Equal(expectedSeason, result.Season);
