@@ -36,12 +36,15 @@ public class SeriesMatcher(
             }
         }
 
-        // Step 2: Fuzzy match remaining single-folder keys
+        // Step 2: Merge by catalog source ID (e.g. TheTVDB ID from audit data)
         var singles = exactGroups
             .Where(g => g.Value.Count == 1)
             .Select(g => (Key: g.Key, Item: g.Value[0]))
             .ToList();
 
+        singles = MergeByCatalogSourceId(singles, groups);
+
+        // Step 3: Fuzzy match remaining single-folder keys
         var fuzzyGroups = await FuzzyMatchAsync(singles, groups);
         groups.AddRange(fuzzyGroups);
 
@@ -54,6 +57,83 @@ public class SeriesMatcher(
 
         logger.LogInformation("Found {Count} duplicate series groups", groups.Count);
         return groups;
+    }
+
+    private List<(string Key, MediaItem Item)> MergeByCatalogSourceId(
+        List<(string Key, MediaItem Item)> singles,
+        List<SeriesGroup> existingGroups)
+    {
+        // Build a CatalogSourceId → existing group lookup
+        var groupByCatalogId = new Dictionary<string, SeriesGroup>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in existingGroups)
+        {
+            foreach (var folder in group.AllFolders)
+            {
+                if (!string.IsNullOrEmpty(folder.CatalogSourceId)
+                    && !groupByCatalogId.ContainsKey(folder.CatalogSourceId))
+                {
+                    groupByCatalogId[folder.CatalogSourceId] = group;
+                }
+            }
+        }
+
+        var remaining = new List<(string Key, MediaItem Item)>();
+        var ungroupedByCatalogId = new Dictionary<string, List<(string Key, MediaItem Item)>>(
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var single in singles)
+        {
+            var sourceId = single.Item.CatalogSourceId;
+            if (string.IsNullOrEmpty(sourceId))
+            {
+                remaining.Add(single);
+                continue;
+            }
+
+            // Merge into an existing exact-key group that shares the same catalog ID
+            if (groupByCatalogId.TryGetValue(sourceId, out var existingGroup))
+            {
+                existingGroup.AllFolders.Add(single.Item);
+                if (existingGroup.MatchMethod == MatchMethod.ExactKey)
+                    existingGroup.MatchMethod = MatchMethod.CatalogId;
+
+                logger.LogInformation(
+                    "Catalog ID merge: '{Name}' → existing group '{Group}' (source {Id})",
+                    single.Item.NormalizedName, existingGroup.SeriesKey, sourceId);
+                continue;
+            }
+
+            // Accumulate singles that share a catalog ID for a new group
+            if (!ungroupedByCatalogId.TryGetValue(sourceId, out var bucket))
+            {
+                bucket = [];
+                ungroupedByCatalogId[sourceId] = bucket;
+            }
+
+            bucket.Add(single);
+        }
+
+        // Create new groups from singles that share a catalog source ID
+        foreach (var (sourceId, bucket) in ungroupedByCatalogId)
+        {
+            if (bucket.Count > 1)
+            {
+                var items = bucket.Select(b => b.Item).ToList();
+                var group = CreateGroup(bucket[0].Key, items, MatchMethod.CatalogId);
+                existingGroups.Add(group);
+                groupByCatalogId[sourceId] = group;
+
+                logger.LogInformation(
+                    "Catalog ID group: {Count} folders merged under '{Key}' (source {Id})",
+                    items.Count, bucket[0].Key, sourceId);
+            }
+            else
+            {
+                remaining.Add(bucket[0]);
+            }
+        }
+
+        return remaining;
     }
 
     private async Task<List<SeriesGroup>> FuzzyMatchAsync(

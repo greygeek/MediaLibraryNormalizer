@@ -8,6 +8,19 @@ namespace MediaLibraryNormalizer.Merging;
 public interface IFileMover
 {
     /// <summary>
+    /// Optional callback for per-file transfer progress.
+    /// Format: "COPYING filename.mkv|bytesCopied|totalBytes" during copy,
+    /// "MOVED filename.mkv" on completion.
+    /// </summary>
+    IProgress<string>? FileTransferProgress { get; set; }
+
+    /// <summary>
+    /// Token checked between file operations. The current copy+verify+delete
+    /// always runs to completion so no partial files or duplicates are left behind.
+    /// </summary>
+    CancellationToken CancellationToken { get; set; }
+
+    /// <summary>
     /// Move a file from source to destination, creating directories as needed.
     /// Also moves associated files (subtitles, nfo, etc.).
     /// Returns the list of operations performed.

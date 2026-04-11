@@ -35,6 +35,7 @@ public class SeriesGroup
 public enum MatchMethod
 {
     ExactKey,
+    CatalogId,
     FuzzyMatch,
     AiVerified
 }

@@ -9,7 +9,8 @@ public interface INormalizerRunner
         NormalizerConfig config,
         IReadOnlyCollection<string>? approvedSeriesKeys = null,
         IProgress<string>? progress = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? catalogSourceIds = null);
 
     Task UndoAsync(
         NormalizerConfig config,

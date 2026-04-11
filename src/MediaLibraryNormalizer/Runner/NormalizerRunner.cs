@@ -18,7 +18,8 @@ public class NormalizerRunner : INormalizerRunner
         NormalizerConfig config,
         IReadOnlyCollection<string>? approvedSeriesKeys = null,
         IProgress<string>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? catalogSourceIds = null)
     {
         ArgumentNullException.ThrowIfNull(config);
 
@@ -37,6 +38,12 @@ public class NormalizerRunner : INormalizerRunner
         var cleanupFailures = new List<FolderCleanupFailure>();
         var approvedCleanupFolderCount = 0;
         var globalCleanupSweepFolderCount = 0;
+
+        // Wire per-file transfer progress so the UI can show copy progress.
+        fileMover.FileTransferProgress = progress is not null
+            ? new Progress<string>(msg => progress.Report(msg))
+            : null;
+        fileMover.CancellationToken = cancellationToken;
 
         List<MediaItem> ScanAndNormalizeItems()
         {
@@ -77,6 +84,33 @@ public class NormalizerRunner : INormalizerRunner
 
         progress?.Report("Matching duplicate series...");
         cancellationToken.ThrowIfCancellationRequested();
+
+        // Enrich items with catalog source IDs from audit data when available.
+        // The dictionary keys are original folder names (not full paths) for reliable
+        // cross-run matching regardless of path normalisation differences.
+        if (catalogSourceIds is { Count: > 0 })
+        {
+            var enriched = 0;
+            foreach (var item in scanResult.AllItems)
+            {
+                if (catalogSourceIds.TryGetValue(item.OriginalName, out var sourceId))
+                {
+                    item.CatalogSourceId = sourceId;
+                    enriched++;
+                }
+            }
+
+            progress?.Report($"Catalog enrichment: {enriched}/{scanResult.AllItems.Count} folders matched from {catalogSourceIds.Count} audit entries");
+            logger.LogInformation(
+                "Catalog enrichment: {Enriched}/{Total} items matched from {Available} audit entries",
+                enriched, scanResult.AllItems.Count, catalogSourceIds.Count);
+        }
+        else
+        {
+            progress?.Report("No catalog source IDs available — run Missing Episode Finder first");
+            logger.LogInformation("No catalog source IDs available — catalog-based duplicate detection skipped");
+        }
+
         scanResult.DuplicateGroups = await matcher.MatchAsync(scanResult.AllItems);
 
         var candidateMergeGroups = approvedSeriesKeys is null
@@ -86,6 +120,8 @@ public class NormalizerRunner : INormalizerRunner
         var mergeGroups = approvedSeriesKeys is null
             ? MergeGroupSelector.Select(scanResult.DuplicateGroups, config)
             : MergeGroupSelector.SelectForApprovalReview(scanResult.DuplicateGroups, config, approvedSeriesKeys);
+
+        progress?.Report($"Duplicate detection: {scanResult.DuplicateGroups.Count} groups found, {candidateMergeGroups.Count} candidates, {mergeGroups.Count} approved for merge");
 
         if (config.ExactMatchesWithFilesOnly)
         {
@@ -103,12 +139,42 @@ public class NormalizerRunner : INormalizerRunner
             candidateMergeGroups.Count);
         }
 
-        progress?.Report("Planning merge operations...");
+        // Write diagnostic to file since Avalonia WinExe has no console
+        var diagPath = Path.Combine(config.LibraryPath, "merge-diagnostic.log");
+        void Diag(string msg)
+        {
+            var line = $"{DateTime.UtcNow:o}  {msg}";
+            File.AppendAllText(diagPath, line + Environment.NewLine);
+            progress?.Report(msg);
+        }
+
+        File.WriteAllText(diagPath, string.Empty); // truncate
+
+        Diag($"config.DryRun={config.DryRun}");
+        Diag($"approvedSeriesKeys={(approvedSeriesKeys is null ? "<null>" : $"[{string.Join(", ", approvedSeriesKeys)}]")}");
+        Diag($"scanResult.DuplicateGroups.Count={scanResult.DuplicateGroups.Count}");
+        foreach (var dg in scanResult.DuplicateGroups)
+            Diag($"  group: key='{dg.SeriesKey}' method={dg.MatchMethod} folders={dg.AllFolders.Count}");
+        Diag($"candidateMergeGroups.Count={candidateMergeGroups.Count}");
+        Diag($"mergeGroups.Count={mergeGroups.Count}");
+        foreach (var mg in mergeGroups)
+            Diag($"  approved group: key='{mg.SeriesKey}' folders={mg.AllFolders.Count} dupes={mg.DuplicateFolders.Count()} files={mg.DuplicateFolders.Sum(f => f.VideoFiles.Count)}");
+
         cancellationToken.ThrowIfCancellationRequested();
         var allOperations = mergeGroups.Count > 0
             ? await merger.MergeAsync(mergeGroups, config.DryRun)
             : [];
 
+        Diag($"MergeAsync returned {allOperations.Count} operations (dryRun={config.DryRun})");
+
+        // When running in approval mode, only the approved duplicate-group merges
+        // and their folder cleanup should execute. The library-wide phases below
+        // (subfolder merging, flattening, renaming, deleting) are not part of the
+        // approval scope and must not touch unapproved series.
+        var isApprovalRun = approvedSeriesKeys is not null;
+
+        if (!isApprovalRun)
+        {
         progress?.Report("Merging similar subfolders...");
         cancellationToken.ThrowIfCancellationRequested();
         var similarFolderOperations = await merger.MergeSimilarSubfoldersAsync(scanResult.AllItems, config.DryRun);
@@ -262,6 +328,7 @@ public class NormalizerRunner : INormalizerRunner
                 }
             }
         }
+        } // end if (!isApprovalRun)
 
         if (approvedSeriesKeys is not null && mergeGroups.Count > 0)
         {

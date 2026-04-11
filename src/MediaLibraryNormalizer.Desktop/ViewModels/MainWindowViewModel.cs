@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -20,7 +21,9 @@ public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly INormalizerRunner _runner;
     private readonly ISeriesAuditRunner _auditRunner;
+    private readonly IAuditRepository _auditRepository;
     private readonly IAppSettingsRepository _settingsRepo;
+    private CancellationTokenSource? _mergeCts;
     private bool _hasFreshPreview;
     private bool _settingsLoaded;
 
@@ -41,6 +44,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public IRelayCommand RemoveSelectedGroupCommand { get; }
     public IRelayCommand ApproveAllActionableCommand { get; }
     public IRelayCommand ClearApprovedGroupsCommand { get; }
+    public IRelayCommand CancelMergeCommand { get; }
 
     [ObservableProperty]
     private MainWindowPage activePage = MainWindowPage.Home;
@@ -85,6 +89,12 @@ public partial class MainWindowViewModel : ViewModelBase
 
     [ObservableProperty]
     private string statusMessage = "Ready.";
+
+    [ObservableProperty]
+    private int mergeProgressPercent;
+
+    [ObservableProperty]
+    private string mergeProgressFileName = string.Empty;
 
     [ObservableProperty]
     private string lastRunMode = "No runs yet";
@@ -146,12 +156,14 @@ public partial class MainWindowViewModel : ViewModelBase
             "MediaLibraryNormalizer", "audit.db");
         var factory = new AppDbContextFactory(dbPath);
         var repository = new SqliteAuditRepository(factory);
+        _auditRepository = repository;
         _settingsRepo = new AppSettingsRepository(factory);
         MissingEpisodeFinder = new MissingEpisodeFinderViewModel(_auditRunner, repository);
         MissingEpisodeFinder.PropertyChanged += OnMissingEpisodeFinderPropertyChanged;
 
         PreviewCommand = new AsyncRelayCommand(() => ExecuteRunAsync(dryRun: true), CanRunPreview);
         MergeCommand = new AsyncRelayCommand(() => ExecuteRunAsync(dryRun: false), CanRunMerge);
+        CancelMergeCommand = new RelayCommand(() => _mergeCts?.Cancel(), () => IsBusy);
         NavigateHomeCommand = new RelayCommand(() => NavigateTo(MainWindowPage.Home), CanNavigate);
         NavigateToMergeManagerCommand = new RelayCommand(() => NavigateTo(MainWindowPage.MergeManager), CanNavigate);
         NavigateToMissingEpisodeFinderCommand = new RelayCommand(() => NavigateTo(MainWindowPage.MissingEpisodeFinder), CanNavigate);
@@ -494,7 +506,14 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private async Task ExecuteRunAsync(bool dryRun)
     {
+        _mergeCts?.Dispose();
+        _mergeCts = new CancellationTokenSource();
+        var ct = _mergeCts.Token;
+
         IsBusy = true;
+        CancelMergeCommand.NotifyCanExecuteChanged();
+        MergeProgressPercent = 0;
+        MergeProgressFileName = string.Empty;
         StatusMessage = dryRun
             ? "Starting dry run..."
             : RequiresApprovalForMerge
@@ -504,6 +523,32 @@ public partial class MainWindowViewModel : ViewModelBase
 
         var progress = new Progress<string>(message =>
         {
+            if (message.StartsWith("COPYING ", StringComparison.Ordinal))
+            {
+                // Format: "COPYING filename.mkv|bytesCopied|totalBytes"
+                var parts = message[8..].Split('|');
+                if (parts.Length == 3
+                    && long.TryParse(parts[1], out var copied)
+                    && long.TryParse(parts[2], out var total)
+                    && total > 0)
+                {
+                    MergeProgressPercent = (int)(copied * 100 / total);
+                    MergeProgressFileName = $"Copying {parts[0]} — {copied * 100 / total}%";
+                    StatusMessage = MergeProgressFileName;
+                }
+                return;
+            }
+
+            if (message.StartsWith("MOVED ", StringComparison.Ordinal))
+            {
+                MergeProgressPercent = 100;
+                MergeProgressFileName = $"Moved {message[6..]}";
+                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {MergeProgressFileName}");
+                return;
+            }
+
+            MergeProgressPercent = 0;
+            MergeProgressFileName = string.Empty;
             StatusMessage = message;
             ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  {message}");
         });
@@ -518,7 +563,52 @@ public partial class MainWindowViewModel : ViewModelBase
                     .Select(group => group.SeriesKey)
                     .ToArray();
 
-            var result = await Task.Run(() => _runner.RunAsync(config, approvedSeriesKeys, progress));
+            // Load catalog source IDs from the latest audit run to enable TVDB-based duplicate detection
+            Dictionary<string, string>? catalogSourceIds = null;
+            try
+            {
+                var auditRun = await _auditRepository.LoadLatestRunAsync(config.LibraryPath);
+                if (auditRun.HasValue)
+                {
+                    // Key by original folder name (unique within a library directory) for reliable
+                    // matching against scanner output, avoiding path-normalisation differences.
+                    catalogSourceIds = auditRun.Value.Result.Series
+                        .Where(s => !string.IsNullOrEmpty(s.CatalogSourceId)
+                                    && !string.IsNullOrEmpty(s.OriginalTitle)
+                                    && s.CatalogStatus == MediaLibraryNormalizer.Audit.CatalogLookupStatus.Matched)
+                        .GroupBy(s => s.OriginalTitle, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(
+                            g => g.Key,
+                            g => g.First().CatalogSourceId!,
+                            StringComparer.OrdinalIgnoreCase);
+
+                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Loaded {catalogSourceIds.Count} catalog source IDs from audit run ({auditRun.Value.RunDate:yyyy-MM-dd HH:mm})");
+                }
+                else
+                {
+                    ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  No saved audit run found — run Missing Episode Finder first for catalog-based duplicate detection.");
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Could not load audit data: {ex.Message}");
+            }
+
+            if (!dryRun)
+            {
+                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  DIAG: config.DryRun={config.DryRun}, approvedKeys=[{string.Join(", ", approvedSeriesKeys ?? [])}]");
+                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  DIAG: staged groups={DuplicateGroups.Count(g => g.IsStaged)}, total groups={DuplicateGroups.Count}");
+            }
+
+            var result = await Task.Run(() => _runner.RunAsync(config, approvedSeriesKeys, progress,
+                cancellationToken: ct, catalogSourceIds: catalogSourceIds));
+
+            if (!dryRun)
+            {
+                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  DIAG: mergeGroups selected={result.SelectedDuplicateGroups}, keys=[{string.Join(", ", result.SelectedSeriesKeys ?? [])}]");
+                var moveOps = result.Operations.Count(o => o.Type == MediaLibraryNormalizer.Models.OperationType.Move && !o.DryRun);
+                ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  DIAG: total ops={result.Operations.Count}, live move ops={moveOps}");
+            }
 
             ApplyResult(result, dryRun);
             StatusMessage = dryRun
@@ -527,6 +617,11 @@ public partial class MainWindowViewModel : ViewModelBase
                     : "Dry run completed. Review planned operations, then run live merge."
                 : "Live merge completed.";
             ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Result written to {result.ReportPath}");
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Cancelled — current file completed safely.";
+            ActivityLog.Add($"{DateTime.Now:HH:mm:ss}  Run cancelled by user. No partial files left behind.");
         }
         catch (Exception ex)
         {
@@ -539,6 +634,9 @@ public partial class MainWindowViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
+            CancelMergeCommand.NotifyCanExecuteChanged();
+            MergeProgressPercent = 0;
+            MergeProgressFileName = string.Empty;
         }
     }
 

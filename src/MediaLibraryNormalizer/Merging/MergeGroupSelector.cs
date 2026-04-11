@@ -52,12 +52,12 @@ public static class MergeGroupSelector
 
     public static bool IsExactMatchEligibleForApproval(SeriesGroup group)
     {
-        return group.MatchMethod == MatchMethod.ExactKey;
+        return group.MatchMethod is MatchMethod.ExactKey or MatchMethod.CatalogId;
     }
 
     public static bool IsExactMatchWithRealFiles(SeriesGroup group)
     {
-        return group.MatchMethod == MatchMethod.ExactKey
+        return group.MatchMethod is MatchMethod.ExactKey or MatchMethod.CatalogId
             && group.DuplicateFolders.Any(folder => folder.FileCount > 0);
     }
 }

@@ -34,6 +34,9 @@ public class MediaItem
 
     /// <summary>The detected media kind for this folder.</summary>
     public MediaKind Kind { get; set; } = MediaKind.Unknown;
+
+    /// <summary>Catalog source ID from audit data (e.g. TheTVDB or TvMaze ID).</summary>
+    public string? CatalogSourceId { get; set; }
 }
 
 /// <summary>
