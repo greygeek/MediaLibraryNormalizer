@@ -433,11 +433,12 @@
                 <!-- Series list + detail: independently scrollable, fills available height -->
                 <Grid Grid.Row="2" ColumnDefinitions="2*,3*" ColumnSpacing="16" MinHeight="0">
                     <Border Grid.Column="0" Padding="8" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1" MinHeight="0">
-                        <Grid RowDefinitions="Auto,Auto,Auto,*">
+                        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
                             <TextBlock Grid.Row="0" Text="Series Inventory" Margin="8" FontSize="18" FontWeight="Bold"/>
                             <CheckBox Grid.Row="1" Margin="8,0,8,8" Content="Show only series with missing episodes" IsChecked="{Binding MissingEpisodeFinder.ShowOnlyMissingEpisodes}"/>
                             <CheckBox Grid.Row="2" Margin="8,0,8,8" Content="Exclude specials" IsChecked="{Binding MissingEpisodeFinder.ExcludeSeasonZeroOnlyMissingSeries}"/>
-                            <ListBox x:Name="SeriesListBox" Grid.Row="3" MinHeight="0" ScrollViewer.VerticalScrollBarVisibility="Auto" ItemsSource="{Binding MissingEpisodeFinder.FilteredSeries}" SelectedItem="{Binding MissingEpisodeFinder.SelectedSeries}">
+                            <CheckBox Grid.Row="3" Margin="8,0,8,8" Content="Exclude not on Usenet" IsChecked="{Binding MissingEpisodeFinder.ExcludeUsenetUnavailableSeries}"/>
+                            <ListBox x:Name="SeriesListBox" Grid.Row="4" MinHeight="0" ScrollViewer.VerticalScrollBarVisibility="Auto" ItemsSource="{Binding MissingEpisodeFinder.FilteredSeries}" SelectedItem="{Binding MissingEpisodeFinder.SelectedSeries}">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate x:DataType="vm:SeriesAuditItemViewModel">
                                         <Border Margin="4" Padding="8" CornerRadius="10" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">

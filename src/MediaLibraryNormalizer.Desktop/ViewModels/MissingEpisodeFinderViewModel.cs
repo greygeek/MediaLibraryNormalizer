@@ -244,6 +244,9 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
     private bool excludeSeasonZeroOnlyMissingSeries;
 
     [ObservableProperty]
+    private bool excludeUsenetUnavailableSeries;
+
+    [ObservableProperty]
     private int selectedInspectorTabIndex;
 
     [ObservableProperty]
@@ -268,6 +271,13 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
         CheckUsenetCommand.NotifyCanExecuteChanged();
         QueueMissingDownloadsCommand.NotifyCanExecuteChanged();
         QueueSelectedSeriesQueueStatusRefresh();
+        if (SelectedSeries is not null && !ShouldIncludeSeriesInInventory(SelectedSeries))
+            SelectedSeries = FilteredSeries.FirstOrDefault();
+    }
+
+    partial void OnExcludeUsenetUnavailableSeriesChanged(bool value)
+    {
+        OnPropertyChanged(nameof(FilteredSeries));
         if (SelectedSeries is not null && !ShouldIncludeSeriesInInventory(SelectedSeries))
             SelectedSeries = FilteredSeries.FirstOrDefault();
     }
@@ -373,7 +383,8 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
 
     private bool ShouldIncludeSeriesInInventory(SeriesAuditItemViewModel series) =>
         (!ShowOnlyMissingEpisodes || series.HasMissingEpisodes)
-        && (!ExcludeSeasonZeroOnlyMissingSeries || !series.HasOnlySeasonZeroMissingEpisodes);
+        && (!ExcludeSeasonZeroOnlyMissingSeries || !series.HasOnlySeasonZeroMissingEpisodes)
+        && (!ExcludeUsenetUnavailableSeries || !series.IsUsenetUnavailable);
 
     private bool CanClearInventory() => !IsBusy && Series.Count > 0;
 
@@ -796,6 +807,18 @@ public partial class MissingEpisodeFinderViewModel : ViewModelBase
             }
 
             OnPropertyChanged(nameof(HasNzbResults));
+
+            // Mark the series as Usenet-unavailable when every missing episode
+            // returned zero NZB results.
+            var checkedSeries = SelectedSeries;
+            if (checkedSeries is not null && NzbResults.Count > 0)
+            {
+                var allUnavailable = NzbResults.All(static r => r.NzbCount == 0);
+                checkedSeries.IsUsenetUnavailable = allUnavailable;
+                if (allUnavailable)
+                    OnPropertyChanged(nameof(FilteredSeries));
+            }
+
             StatusMessage = $"Usenet check complete: {NzbResults.Count(static r => r.NzbCount > 0)}/{NzbResults.Count} episodes available.";
         }
         catch (Exception ex)

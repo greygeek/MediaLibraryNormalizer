@@ -2,11 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using CommunityToolkit.Mvvm.ComponentModel;
 using MediaLibraryNormalizer.Audit;
 
 namespace MediaLibraryNormalizer.Desktop.ViewModels;
 
-public class SeriesAuditItemViewModel
+public partial class SeriesAuditItemViewModel : ObservableObject
 {
     public SeriesAuditItemViewModel(SeriesAuditItem item)
     {
@@ -97,15 +98,29 @@ public class SeriesAuditItemViewModel
             || Item.CatalogGenres.Count > 0
             || Item.CatalogRating.HasValue);
 
+    /// <summary>
+    /// Set to <see langword="true"/> after a Usenet availability check finds zero
+    /// NZB results for every missing episode in this series.
+    /// </summary>
+    [ObservableProperty]
+    private bool isUsenetUnavailable;
+
+    partial void OnIsUsenetUnavailableChanged(bool value)
+    {
+        OnPropertyChanged(nameof(StatusText));
+    }
+
     public string DisplayTitle => Year.HasValue ? $"{NormalizedTitle} ({Year})" : NormalizedTitle;
 
-    public string StatusText => Status switch
-    {
-        AuditSeriesStatus.ReadyForCatalogLookup => "Ready for catalog lookup",
-        AuditSeriesStatus.PartialInventory => "Partial inventory",
-        AuditSeriesStatus.NoParsedEpisodes => "No parsed episodes",
-        _ => "Unknown"
-    };
+    public string StatusText => IsUsenetUnavailable
+        ? "Not on Usenet"
+        : Status switch
+        {
+            AuditSeriesStatus.ReadyForCatalogLookup => "Ready for catalog lookup",
+            AuditSeriesStatus.PartialInventory => "Partial inventory",
+            AuditSeriesStatus.NoParsedEpisodes => "No parsed episodes",
+            _ => "Unknown"
+        };
 
     public string InventorySummary =>
         $"{ParsedEpisodeCount} parsed episodes • {TotalVideoFiles} video files • {SeasonFolderCount} season folders";
