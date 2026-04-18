@@ -4,5 +4,6 @@ public enum MainWindowPage
 {
     Home,
     MergeManager,
-    MissingEpisodeFinder
+    MissingEpisodeFinder,
+    SeriesDiscovery
 }

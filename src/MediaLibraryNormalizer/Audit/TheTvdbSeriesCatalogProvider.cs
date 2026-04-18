@@ -11,7 +11,7 @@ namespace MediaLibraryNormalizer.Audit;
 /// Individual/subscriber accounts must register a free project there to obtain a UUID key.
 /// The bearer token returned by POST /login is cached for the lifetime of this instance.
 /// </summary>
-public sealed class TheTvdbSeriesCatalogProvider : ISeriesCatalogProvider, IDisposable
+public sealed class TheTvdbSeriesCatalogProvider : ISeriesCatalogProvider, ISeriesDiscoveryProvider, IDisposable
 {
     private const string BaseUrl = "https://api4.thetvdb.com/v4";
 
@@ -120,6 +120,56 @@ public sealed class TheTvdbSeriesCatalogProvider : ISeriesCatalogProvider, IDisp
                 })
                 .ToList()
         };
+    }
+
+    public async Task<IReadOnlyList<DiscoveryGenre>> GetGenresAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureAuthenticatedAsync(cancellationToken);
+
+        var url = $"{BaseUrl}/genres";
+        var response = await GetWithRetryAsync<TvdbResponse<List<TvdbGenreRecord>>>(url, cancellationToken);
+
+        if (response?.Data is null)
+            return [];
+
+        return response.Data
+            .Where(static g => g.Id > 0 && !string.IsNullOrWhiteSpace(g.Name))
+            .Select(static g => new DiscoveryGenre { Id = g.Id, Name = g.Name! })
+            .OrderBy(static g => g.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<DiscoverySeries>> GetSeriesByGenreAsync(
+        int genreId,
+        string country = "usa",
+        string language = "eng",
+        int page = 0,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureAuthenticatedAsync(cancellationToken);
+
+        var url = $"{BaseUrl}/series/filter?country={Uri.EscapeDataString(country)}&lang={Uri.EscapeDataString(language)}&genre={genreId}&sort=score&sortType=desc&page={page}";
+        _log?.Invoke($"[TheTVDB] Discovery GET {url}");
+        var response = await GetWithRetryAsync<TvdbResponse<List<TvdbSeriesFilterResult>>>(url, cancellationToken);
+
+        if (response?.Data is null)
+            return [];
+
+        return response.Data
+            .Where(static s => s.Id > 0 && !string.IsNullOrWhiteSpace(s.Name))
+            .Select(static s => new DiscoverySeries
+            {
+                SourceId = s.Id.ToString(),
+                Title = s.Name!,
+                Year = ParseYear(s.Year ?? s.FirstAired),
+                Overview = s.Overview,
+                ImageUrl = s.Image,
+                Score = s.Score,
+                Status = s.Status?.Name,
+                Country = s.OriginalCountry,
+                FirstAired = s.FirstAired
+            })
+            .ToList();
     }
 
     public void Dispose() => _httpClient.Dispose();
@@ -320,5 +370,47 @@ public sealed class TheTvdbSeriesCatalogProvider : ISeriesCatalogProvider, IDisp
 
         [JsonPropertyName("aired")]
         public string? Aired { get; init; }
+    }
+
+    private sealed class TvdbGenreRecord
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; init; }
+
+        [JsonPropertyName("name")]
+        public string? Name { get; init; }
+
+        [JsonPropertyName("slug")]
+        public string? Slug { get; init; }
+    }
+
+    private sealed class TvdbSeriesFilterResult
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; init; }
+
+        [JsonPropertyName("name")]
+        public string? Name { get; init; }
+
+        [JsonPropertyName("image")]
+        public string? Image { get; init; }
+
+        [JsonPropertyName("year")]
+        public string? Year { get; init; }
+
+        [JsonPropertyName("firstAired")]
+        public string? FirstAired { get; init; }
+
+        [JsonPropertyName("overview")]
+        public string? Overview { get; init; }
+
+        [JsonPropertyName("score")]
+        public double? Score { get; init; }
+
+        [JsonPropertyName("originalCountry")]
+        public string? OriginalCountry { get; init; }
+
+        [JsonPropertyName("status")]
+        public TvdbStatus? Status { get; init; }
     }
 }

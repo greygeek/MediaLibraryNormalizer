@@ -3,6 +3,8 @@
         xmlns:vm="using:MediaLibraryNormalizer.Desktop.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:asyncImageLoader="using:AsyncImageLoader"
+        xmlns:audit="using:MediaLibraryNormalizer.Audit"
     mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="900"
         x:Class="MediaLibraryNormalizer.Desktop.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -32,7 +34,8 @@
                 <WrapPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
                     <Button Command="{Binding NavigateHomeCommand}" Content="Home" Margin="0,0,8,8"/>
                     <Button Command="{Binding NavigateToMergeManagerCommand}" Content="Merge Manager" Margin="0,0,8,8"/>
-                    <Button Command="{Binding NavigateToMissingEpisodeFinderCommand}" Content="Missing Episode Finder" Margin="0,0,0,8"/>
+                    <Button Command="{Binding NavigateToMissingEpisodeFinderCommand}" Content="Missing Episode Finder" Margin="0,0,8,8"/>
+                    <Button Command="{Binding NavigateToSeriesDiscoveryCommand}" Content="Series Discovery" Margin="0,0,0,8"/>
                 </WrapPanel>
             </Grid>
         </Border>
@@ -68,7 +71,7 @@
                         </Border>
                     </Grid>
 
-                    <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="16">
                         <Border Grid.Column="0" Padding="20" CornerRadius="16" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
                             <StackPanel Spacing="10">
                                 <TextBlock Text="Merge Manager" FontSize="22" FontWeight="Bold"/>
@@ -86,6 +89,16 @@
                                 <TextBlock Text="Current implementation" FontWeight="SemiBold" Margin="0,8,0,0"/>
                                 <TextBlock Text="Workspace shell and navigation are ready. Catalog providers, comparison logic, and reports are the next increment." TextWrapping="Wrap" Opacity="0.72"/>
                                 <Button Command="{Binding NavigateToMissingEpisodeFinderCommand}" Content="Open Missing Episode Finder" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="2" Padding="20" CornerRadius="16" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Series Discovery" FontSize="22" FontWeight="Bold"/>
+                                <TextBlock Text="Browse popular and highly-rated TV series by genre. Discover new shows not already in your library and queue them for download." TextWrapping="Wrap" Opacity="0.8"/>
+                                <TextBlock Text="Current implementation" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                                <TextBlock Text="Genre-based browsing with cover photos, inventory filtering, and NZB download queueing." TextWrapping="Wrap" Opacity="0.72"/>
+                                <Button Command="{Binding NavigateToSeriesDiscoveryCommand}" Content="Open Series Discovery" HorizontalAlignment="Left" Margin="0,8,0,0"/>
                             </StackPanel>
                         </Border>
                     </Grid>
@@ -624,6 +637,142 @@
                                 </Grid>
                             </TabItem>
                         </TabControl>
+                    </Border>
+                </Grid>
+            </Grid>
+
+            <!-- Series Discovery Page -->
+            <Grid IsVisible="{Binding IsSeriesDiscoveryActive}" RowDefinitions="Auto,*" RowSpacing="12">
+
+                <!-- Controls bar -->
+                <Border Grid.Row="0" Padding="12,8" CornerRadius="10"
+                        BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                    <Grid RowDefinitions="Auto,Auto">
+                        <DockPanel Grid.Row="0">
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Button Command="{Binding SeriesDiscovery.BrowseCommand}" Content="Browse"/>
+                                <Button Command="{Binding SeriesDiscovery.LoadMoreCommand}" Content="Load More"
+                                        IsVisible="{Binding SeriesDiscovery.HasMorePages}"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                <TextBlock Text="Genre" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <ComboBox MinWidth="200"
+                                          ItemsSource="{Binding SeriesDiscovery.Genres}"
+                                          SelectedItem="{Binding SeriesDiscovery.SelectedGenre}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="audit:DiscoveryGenre">
+                                            <TextBlock Text="{Binding Name}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <CheckBox Content="Hide series already in library"
+                                          IsChecked="{Binding SeriesDiscovery.HideAlreadyInLibrary}"/>
+                                <TextBlock Text="{Binding SeriesDiscovery.StatusMessage}" Opacity="0.72"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </DockPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Results: series list + detail -->
+                <Grid Grid.Row="1" ColumnDefinitions="2*,3*" ColumnSpacing="16" MinHeight="0">
+
+                    <!-- Series list with cover photos -->
+                    <Border Grid.Column="0" Padding="8" CornerRadius="12"
+                            BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1" MinHeight="0">
+                        <Grid RowDefinitions="Auto,*">
+                            <TextBlock Grid.Row="0" Text="Discovered Series" Margin="8" FontSize="18" FontWeight="Bold"/>
+                            <ListBox Grid.Row="1" MinHeight="0"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     ItemsSource="{Binding SeriesDiscovery.FilteredResults}"
+                                     SelectedItem="{Binding SeriesDiscovery.SelectedResult}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:DiscoverySeriesViewModel">
+                                        <Border Margin="4" Padding="8" CornerRadius="10"
+                                                BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                                            <Grid ColumnDefinitions="68,*" ColumnSpacing="10">
+                                                <Border Grid.Column="0" CornerRadius="6" ClipToBounds="True"
+                                                        Width="60" Height="90">
+                                                    <Image asyncImageLoader:ImageLoader.Source="{Binding ImageUrl}"
+                                                           Stretch="UniformToFill"/>
+                                                </Border>
+                                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                                    <DockPanel>
+                                                        <TextBlock DockPanel.Dock="Left" Text="{Binding DisplayTitle}"
+                                                                   FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock DockPanel.Dock="Right" Text="{Binding ScoreText}"
+                                                                   FontSize="12" FontWeight="SemiBold" Opacity="0.8"
+                                                                   HorizontalAlignment="Right"
+                                                                   IsVisible="{Binding ScoreText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                    </DockPanel>
+                                                    <TextBlock Text="{Binding GenreText}" FontSize="11" Opacity="0.72"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Text="{Binding StatusText}" FontSize="11" Opacity="0.65"/>
+                                                    <TextBlock Text="{Binding LibraryBadge}" FontSize="11"
+                                                               FontWeight="SemiBold" Opacity="0.85"
+                                                               IsVisible="{Binding LibraryBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </Border>
+
+                    <!-- Detail panel -->
+                    <Border Grid.Column="1" Padding="16" CornerRadius="12"
+                            BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1" MinHeight="0">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel Spacing="12"
+                                        IsVisible="{Binding SeriesDiscovery.SelectedResult, Converter={x:Static ObjectConverters.IsNotNull}}">
+
+                                <!-- Cover + title row -->
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                                    <Border Grid.Column="0" CornerRadius="8" ClipToBounds="True"
+                                            Width="180" Height="270">
+                                        <Image asyncImageLoader:ImageLoader.Source="{Binding SeriesDiscovery.SelectedResult.ImageUrl}"
+                                               Stretch="UniformToFill"/>
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Top">
+                                        <TextBlock Text="{Binding SeriesDiscovery.SelectedResult.DisplayTitle}"
+                                                   FontSize="24" FontWeight="Bold" TextWrapping="Wrap"/>
+                                        <WrapPanel>
+                                            <TextBlock Text="{Binding SeriesDiscovery.SelectedResult.ScoreText}"
+                                                       FontWeight="SemiBold" FontSize="16" Margin="0,0,12,0"
+                                                       IsVisible="{Binding SeriesDiscovery.SelectedResult.ScoreText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                            <TextBlock Text="{Binding SeriesDiscovery.SelectedResult.StatusText}"
+                                                       Opacity="0.8" Margin="0,0,12,0"
+                                                       IsVisible="{Binding SeriesDiscovery.SelectedResult.StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                            <TextBlock Text="{Binding SeriesDiscovery.SelectedResult.Country}"
+                                                       Opacity="0.7" Margin="0,0,12,0"
+                                                       IsVisible="{Binding SeriesDiscovery.SelectedResult.Country, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                            <TextBlock Text="{Binding SeriesDiscovery.SelectedResult.FirstAired}"
+                                                       Opacity="0.7"
+                                                       IsVisible="{Binding SeriesDiscovery.SelectedResult.FirstAired, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        </WrapPanel>
+                                        <TextBlock Text="{Binding SeriesDiscovery.SelectedResult.GenreText}"
+                                                   FontSize="13" Opacity="0.75" TextWrapping="Wrap"
+                                                   IsVisible="{Binding SeriesDiscovery.SelectedResult.GenreText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        <TextBlock Text="{Binding SeriesDiscovery.SelectedResult.LibraryBadge}"
+                                                   FontWeight="SemiBold" FontSize="14"
+                                                   IsVisible="{Binding SeriesDiscovery.SelectedResult.LibraryBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                                        <Button Margin="0,8,0,0"
+                                                Command="{Binding SeriesDiscovery.QueueSeriesCommand}"
+                                                Content="Queue for Download"
+                                                ToolTip.Tip="Fetch episodes from TheTVDB and queue NZB downloads via SABnzbd"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Overview -->
+                                <Border Padding="12" CornerRadius="10"
+                                        Background="{DynamicResource ThemeControlLowBrush}">
+                                    <TextBlock Text="{Binding SeriesDiscovery.SelectedResult.Overview}"
+                                               TextWrapping="Wrap" Opacity="0.85"/>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
                     </Border>
                 </Grid>
             </Grid>

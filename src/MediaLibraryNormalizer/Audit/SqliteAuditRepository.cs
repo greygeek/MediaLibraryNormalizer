@@ -57,6 +57,20 @@ public sealed class SqliteAuditRepository(AppDbContextFactory factory) : IAuditR
         return result is null ? null : (result, runDate);
     }
 
+    public async Task<IReadOnlyList<SeriesAuditRunResult>> GetAllRunsAsync(CancellationToken ct = default)
+    {
+        await using var db = factory.Create();
+        var rows = await db.AuditRuns.ToListAsync(ct);
+        var results = new List<SeriesAuditRunResult>();
+        foreach (var row in rows)
+        {
+            var result = JsonSerializer.Deserialize<SeriesAuditRunResult>(row.ResultJson, JsonOptions);
+            if (result is not null)
+                results.Add(result);
+        }
+        return results;
+    }
+
     //  ICatalogCache 
 
     public async Task<CatalogSeries?> GetAsync(

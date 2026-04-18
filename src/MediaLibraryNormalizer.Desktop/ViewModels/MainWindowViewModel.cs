@@ -35,11 +35,14 @@ public partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<string> ActivityLog { get; } = [];
     public MissingEpisodeFinderViewModel MissingEpisodeFinder { get; }
 
+    public SeriesDiscoveryViewModel SeriesDiscovery { get; }
+
     public IAsyncRelayCommand PreviewCommand { get; }
     public IAsyncRelayCommand MergeCommand { get; }
     public IRelayCommand NavigateHomeCommand { get; }
     public IRelayCommand NavigateToMergeManagerCommand { get; }
     public IRelayCommand NavigateToMissingEpisodeFinderCommand { get; }
+    public IRelayCommand NavigateToSeriesDiscoveryCommand { get; }
     public IRelayCommand ApproveSelectedGroupCommand { get; }
     public IRelayCommand RemoveSelectedGroupCommand { get; }
     public IRelayCommand ApproveAllActionableCommand { get; }
@@ -160,6 +163,7 @@ public partial class MainWindowViewModel : ViewModelBase
         _settingsRepo = new AppSettingsRepository(factory);
         MissingEpisodeFinder = new MissingEpisodeFinderViewModel(_auditRunner, repository);
         MissingEpisodeFinder.PropertyChanged += OnMissingEpisodeFinderPropertyChanged;
+        SeriesDiscovery = new SeriesDiscoveryViewModel(repository);
 
         PreviewCommand = new AsyncRelayCommand(() => ExecuteRunAsync(dryRun: true), CanRunPreview);
         MergeCommand = new AsyncRelayCommand(() => ExecuteRunAsync(dryRun: false), CanRunMerge);
@@ -167,6 +171,7 @@ public partial class MainWindowViewModel : ViewModelBase
         NavigateHomeCommand = new RelayCommand(() => NavigateTo(MainWindowPage.Home), CanNavigate);
         NavigateToMergeManagerCommand = new RelayCommand(() => NavigateTo(MainWindowPage.MergeManager), CanNavigate);
         NavigateToMissingEpisodeFinderCommand = new RelayCommand(() => NavigateTo(MainWindowPage.MissingEpisodeFinder), CanNavigate);
+        NavigateToSeriesDiscoveryCommand = new RelayCommand(() => NavigateTo(MainWindowPage.SeriesDiscovery), CanNavigate);
         ApproveSelectedGroupCommand = new RelayCommand(ApproveSelectedGroup, CanApproveSelectedGroup);
         RemoveSelectedGroupCommand = new RelayCommand(RemoveSelectedGroup, CanRemoveSelectedGroup);
         ApproveAllActionableCommand = new RelayCommand(ApproveAllActionable, CanApproveAllActionable);
@@ -184,11 +189,14 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public bool IsMissingEpisodeFinderActive => ActivePage == MainWindowPage.MissingEpisodeFinder;
 
+    public bool IsSeriesDiscoveryActive => ActivePage == MainWindowPage.SeriesDiscovery;
+
     public string ActiveWorkspaceTitle => ActivePage switch
     {
         MainWindowPage.Home => "Choose a workflow",
         MainWindowPage.MergeManager => "Merge Manager",
         MainWindowPage.MissingEpisodeFinder => "Missing Episode Finder",
+        MainWindowPage.SeriesDiscovery => "Series Discovery",
         _ => "Media Library Normalizer"
     };
 
@@ -197,6 +205,7 @@ public partial class MainWindowViewModel : ViewModelBase
         MainWindowPage.Home => "Launch the existing merge workflow or the new metadata-driven audit workspace.",
         MainWindowPage.MergeManager => "Preview duplicate groups, approve merges, and execute the existing normalization pipeline.",
         MainWindowPage.MissingEpisodeFinder => "Audit your library against online episode catalogs and review what is missing before any later acquisition workflow exists.",
+        MainWindowPage.SeriesDiscovery => "Browse popular and highly-rated series by genre. Discover shows not in your library and queue them for download.",
         _ => string.Empty
     };
 
@@ -255,9 +264,16 @@ public partial class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsHomePageActive));
         OnPropertyChanged(nameof(IsMergeManagerActive));
         OnPropertyChanged(nameof(IsMissingEpisodeFinderActive));
+        OnPropertyChanged(nameof(IsSeriesDiscoveryActive));
         OnPropertyChanged(nameof(ActiveWorkspaceTitle));
         OnPropertyChanged(nameof(ActiveWorkspaceDescription));
         RefreshCommandState();
+
+        if (value == MainWindowPage.SeriesDiscovery)
+        {
+            SyncDiscoverySettings();
+            _ = SeriesDiscovery.InitializeAsync();
+        }
     }
 
     partial void OnIsBusyChanged(bool value)
@@ -800,6 +816,7 @@ public partial class MainWindowViewModel : ViewModelBase
         NavigateHomeCommand.NotifyCanExecuteChanged();
         NavigateToMergeManagerCommand.NotifyCanExecuteChanged();
         NavigateToMissingEpisodeFinderCommand.NotifyCanExecuteChanged();
+        NavigateToSeriesDiscoveryCommand.NotifyCanExecuteChanged();
         ApproveSelectedGroupCommand.NotifyCanExecuteChanged();
         RemoveSelectedGroupCommand.NotifyCanExecuteChanged();
         ApproveAllActionableCommand.NotifyCanExecuteChanged();
@@ -819,6 +836,7 @@ public partial class MainWindowViewModel : ViewModelBase
                 ? "Set a library path and run a dry run to inspect duplicate groups."
                 : "Merge Manager ready.",
             MainWindowPage.MissingEpisodeFinder => "Missing Episode Finder shell ready. Audit engine implementation is next.",
+            MainWindowPage.SeriesDiscovery => "Browse popular series by genre. Select a genre to get started.",
             _ => StatusMessage
         };
     }
@@ -840,6 +858,16 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             StatusMessage = "Configuration changed. Run a fresh dry run before approving groups for live merge.";
         }
+    }
+
+    private void SyncDiscoverySettings()
+    {
+        SeriesDiscovery.TheTvdbApiKey = MissingEpisodeFinder.TheTvdbApiKey;
+        SeriesDiscovery.NzbApiKey = MissingEpisodeFinder.NzbApiKey;
+        SeriesDiscovery.NzbWatchFolder = MissingEpisodeFinder.NzbWatchFolder;
+        SeriesDiscovery.NzbCategory = MissingEpisodeFinder.NzbCategory;
+        SeriesDiscovery.SabnzbdUrl = MissingEpisodeFinder.SabnzbdUrl;
+        SeriesDiscovery.SabnzbdApiKey = MissingEpisodeFinder.SabnzbdApiKey;
     }
 
     private Dictionary<string, int> BuildIssueCounts(NormalizerRunResult result)

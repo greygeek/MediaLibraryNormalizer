@@ -6,4 +6,6 @@ public interface IAuditRepository
 
     Task<(SeriesAuditRunResult Result, DateTime RunDate)?> LoadLatestRunAsync(
         string libraryPath, CancellationToken ct = default);
+
+    Task<IReadOnlyList<SeriesAuditRunResult>> GetAllRunsAsync(CancellationToken ct = default);
 }
