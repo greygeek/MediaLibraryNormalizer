@@ -84,6 +84,12 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
                 }
             }
 
+            // ── Phase 1b: deduplicate folders with the same normalised title ──
+            // When multiple folders normalise to the same title (e.g. a canonical
+            // folder and a near-duplicate), merge their data into one entry so the
+            // audit doesn't show the series twice.
+            scanned = DeduplicateScanned(scanned);
+
             // ── Phase 2: catalog lookups (deterministic when provider is active) ──
             var seriesResults = new List<SeriesAuditItem>(scanned.Count);
 
@@ -231,6 +237,63 @@ public class SeriesAuditRunner(ISeriesCatalogProvider? catalogProvider = null) :
         AuditSeriesStatus Status,
         int TotalVideoFiles,
         int SeasonFolderCount);
+
+    /// <summary>
+    /// Merge entries that share the same (NormalizedTitle, Year) so duplicate
+    /// folders on disk don't produce duplicate rows in the audit.
+    /// </summary>
+    private static List<ScannedSeries> DeduplicateScanned(List<ScannedSeries> scanned)
+    {
+        var groups = scanned
+            .GroupBy(s => (Title: s.NormalizedTitle.ToUpperInvariant(), s.Year));
+
+        var result = new List<ScannedSeries>(scanned.Count);
+
+        foreach (var group in groups)
+        {
+            var items = group.ToList();
+            if (items.Count == 1)
+            {
+                result.Add(items[0]);
+                continue;
+            }
+
+            // Pick the entry with the most video files as the canonical representative.
+            var primary = items.OrderByDescending(s => s.TotalVideoFiles).First();
+
+            var mergedEpisodeKeys = new HashSet<string>(primary.ParsedEpisodeKeys, StringComparer.OrdinalIgnoreCase);
+            var mergedUnparseable = new List<string>(primary.UnparseableFiles);
+            var totalFiles = primary.TotalVideoFiles;
+            var totalSeasons = primary.SeasonFolderCount;
+
+            foreach (var other in items.Where(s => !ReferenceEquals(s, primary)))
+            {
+                mergedEpisodeKeys.UnionWith(other.ParsedEpisodeKeys);
+                mergedUnparseable.AddRange(other.UnparseableFiles);
+                totalFiles += other.TotalVideoFiles;
+                totalSeasons = Math.Max(totalSeasons, other.SeasonFolderCount);
+            }
+
+            var mergedStatus = mergedEpisodeKeys.Count == 0
+                ? AuditSeriesStatus.NoParsedEpisodes
+                : mergedUnparseable.Count == 0
+                    ? AuditSeriesStatus.ReadyForCatalogLookup
+                    : AuditSeriesStatus.PartialInventory;
+
+            result.Add(new ScannedSeries(
+                primary.OriginalName,
+                primary.Path,
+                primary.NormalizedTitle,
+                primary.Year,
+                mergedEpisodeKeys,
+                mergedUnparseable,
+                mergedStatus,
+                totalFiles,
+                totalSeasons));
+        }
+
+        return result;
+    }
 
     private ISeriesCatalogProvider? CreateProvider(SeriesAuditOptions options, IProgress<AuditProgressReport>? progress)
     {

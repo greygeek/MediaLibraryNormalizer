@@ -43,6 +43,11 @@ public class LibraryScanner(
     {
         dirPath = ResolveAccessibleDirectoryPath(dirPath) ?? dirPath;
 
+        // Windows allows trailing spaces in directory names, but they cause
+        // Path.GetRelativePath and Path.Combine to produce broken paths
+        // (e.g. "folder \..\folder \sub"). Trim to normalise.
+        dirPath = dirPath.TrimEnd();
+
         var dirName = Path.GetFileName(dirPath);
         var isUnpack = IsUnpackFolder(dirName);
 

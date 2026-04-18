@@ -175,159 +175,159 @@ public class NormalizerRunner : INormalizerRunner
 
         if (!isApprovalRun)
         {
-        progress?.Report("Merging similar subfolders...");
-        cancellationToken.ThrowIfCancellationRequested();
-        var similarFolderOperations = await merger.MergeSimilarSubfoldersAsync(scanResult.AllItems, config.DryRun);
-        allOperations.AddRange(similarFolderOperations);
-
-        progress?.Report("Flattening movie folders...");
-        cancellationToken.ThrowIfCancellationRequested();
-        var groupedMoviePaths = scanResult.DuplicateGroups
-            .Where(static group => group.AllFolders.Any(folder => folder.Kind == MediaKind.Movie)
-                                   && !group.AllFolders.Any(folder => folder.Kind == MediaKind.TvSeries))
-            .SelectMany(group => group.AllFolders)
-            .Select(folder => folder.Path)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var standaloneMovies = scanResult.AllItems
-            .Where(item => item.Kind == MediaKind.Movie && !groupedMoviePaths.Contains(item.Path))
-            .ToList();
-        var movieFlattenOperations = await merger.FlattenMovieFoldersAsync(standaloneMovies, config.DryRun);
-        allOperations.AddRange(movieFlattenOperations);
-
-        progress?.Report("Deduplicating top-level movie files...");
-        cancellationToken.ThrowIfCancellationRequested();
-        var topLevelMovieDedupeOperations = await merger.DeduplicateTopLevelMovieFilesAsync(config.LibraryPath, config.DryRun);
-        allOperations.AddRange(topLevelMovieDedupeOperations);
-
-        if (config.FlattenEpisodeReleaseFolders)
-        {
-            progress?.Report("Moving top-level episode files...");
+            progress?.Report("Merging similar subfolders...");
             cancellationToken.ThrowIfCancellationRequested();
-            items = ScanAndNormalizeItems();
-            var topLevelEpisodeOps = await merger.FlattenTopLevelEpisodeFilesAsync(config.LibraryPath, items, config.DryRun);
-            allOperations.AddRange(topLevelEpisodeOps);
+            var similarFolderOperations = await merger.MergeSimilarSubfoldersAsync(scanResult.AllItems, config.DryRun);
+            allOperations.AddRange(similarFolderOperations);
 
-            progress?.Report("Flattening episode release folders...");
+            progress?.Report("Flattening movie folders...");
             cancellationToken.ThrowIfCancellationRequested();
-            items = ScanAndNormalizeItems();
-            var episodeFlattenOps = await merger.FlattenEpisodeReleaseFoldersAsync(items, config.LibraryPath, config.DryRun);
-            allOperations.AddRange(episodeFlattenOps);
-
-            progress?.Report("Flattening orphaned series folders...");
-            cancellationToken.ThrowIfCancellationRequested();
-            items = ScanAndNormalizeItems();
-            var orphanFlattenOps = await merger.FlattenOrphanedSeriesFoldersAsync(items, config.LibraryPath, config.DryRun);
-            allOperations.AddRange(orphanFlattenOps);
-
-            // The flatten phases may have created new Season N subfolders inside an existing
-            // series folder that already had Season 0N subfolders (e.g. "Season 1" alongside
-            // "Season 01"). Run MergeSimilarSubfoldersAsync again with a fresh scan so those
-            // pairs are merged and the canonical zero-padded name is preserved.
-            progress?.Report("Merging season sub-folders created by flatten...");
-            cancellationToken.ThrowIfCancellationRequested();
-            items = ScanAndNormalizeItems();
-            var postFlattenSubfolderOps = await merger.MergeSimilarSubfoldersAsync(items, config.DryRun);
-            allOperations.AddRange(postFlattenSubfolderOps);
-        }
-
-        if (config.UseAiOrganizer)
-        {
-            progress?.Report("AI-assisted file organization...");
-            cancellationToken.ThrowIfCancellationRequested();
-            items = ScanAndNormalizeItems();
-            var aiOrganizer = serviceProvider.GetRequiredService<IAiOrganizer>();
-
-            // Collect video files in small flat folders whose paths have no parseable episode token.
-            // Items already handled by flatten (folder name has episode token) will have been moved,
-            // so Directory.Exists guards against double-processing.
-            var nonConformingFiles = items
-                .Where(item =>
-                    item.SeasonFolders.Count == 0 &&
-                    item.VideoFiles.Count is >= 1 and <= 3 &&
-                    episodeParser.Parse(item.OriginalName) is null &&
-                    item.VideoFiles.All(vf => episodeParser.Parse(vf) is null) &&
-                    Directory.Exists(item.Path))
-                .SelectMany(item => item.VideoFiles)
+            var groupedMoviePaths = scanResult.DuplicateGroups
+                .Where(static group => group.AllFolders.Any(folder => folder.Kind == MediaKind.Movie)
+                                       && !group.AllFolders.Any(folder => folder.Kind == MediaKind.TvSeries))
+                .SelectMany(group => group.AllFolders)
+                .Select(folder => folder.Path)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var standaloneMovies = scanResult.AllItems
+                .Where(item => item.Kind == MediaKind.Movie && !groupedMoviePaths.Contains(item.Path))
                 .ToList();
+            var movieFlattenOperations = await merger.FlattenMovieFoldersAsync(standaloneMovies, config.DryRun);
+            allOperations.AddRange(movieFlattenOperations);
 
-            if (nonConformingFiles.Count > 0)
-            {
-                logger.LogInformation("AI organizer: sending {Count} non-conforming video files", nonConformingFiles.Count);
-                var suggestions = await aiOrganizer.SuggestMovesAsync(config.LibraryPath, nonConformingFiles, cancellationToken);
-
-                foreach (var suggestion in suggestions)
-                {
-                    logger.LogInformation("{Action} via AI: {File} \u2192 {Dest}",
-                        config.DryRun ? "Would move" : "Moving",
-                        Path.GetFileName(suggestion.Source),
-                        Path.GetDirectoryName(suggestion.Destination));
-                    allOperations.AddRange(await fileMover.MoveFileAsync(suggestion.Source, suggestion.Destination, config.DryRun));
-                }
-            }
-        }
-
-        if (config.RenameNonStandardFiles)
-        {
-            progress?.Report("Renaming non-standard episode filenames...");
+            progress?.Report("Deduplicating top-level movie files...");
             cancellationToken.ThrowIfCancellationRequested();
-            items = ScanAndNormalizeItems();
-            foreach (var item in items.Where(static i => i.Kind == MediaKind.TvSeries))
+            var topLevelMovieDedupeOperations = await merger.DeduplicateTopLevelMovieFilesAsync(config.LibraryPath, config.DryRun);
+            allOperations.AddRange(topLevelMovieDedupeOperations);
+
+            if (config.FlattenEpisodeReleaseFolders)
             {
-                foreach (var videoFile in item.VideoFiles)
+                progress?.Report("Moving top-level episode files...");
+                cancellationToken.ThrowIfCancellationRequested();
+                items = ScanAndNormalizeItems();
+                var topLevelEpisodeOps = await merger.FlattenTopLevelEpisodeFilesAsync(config.LibraryPath, items, config.DryRun);
+                allOperations.AddRange(topLevelEpisodeOps);
+
+                progress?.Report("Flattening episode release folders...");
+                cancellationToken.ThrowIfCancellationRequested();
+                items = ScanAndNormalizeItems();
+                var episodeFlattenOps = await merger.FlattenEpisodeReleaseFoldersAsync(items, config.LibraryPath, config.DryRun);
+                allOperations.AddRange(episodeFlattenOps);
+
+                progress?.Report("Flattening orphaned series folders...");
+                cancellationToken.ThrowIfCancellationRequested();
+                items = ScanAndNormalizeItems();
+                var orphanFlattenOps = await merger.FlattenOrphanedSeriesFoldersAsync(items, config.LibraryPath, config.DryRun);
+                allOperations.AddRange(orphanFlattenOps);
+
+                // The flatten phases may have created new Season N subfolders inside an existing
+                // series folder that already had Season 0N subfolders (e.g. "Season 1" alongside
+                // "Season 01"). Run MergeSimilarSubfoldersAsync again with a fresh scan so those
+                // pairs are merged and the canonical zero-padded name is preserved.
+                progress?.Report("Merging season sub-folders created by flatten...");
+                cancellationToken.ThrowIfCancellationRequested();
+                items = ScanAndNormalizeItems();
+                var postFlattenSubfolderOps = await merger.MergeSimilarSubfoldersAsync(items, config.DryRun);
+                allOperations.AddRange(postFlattenSubfolderOps);
+            }
+
+            if (config.UseAiOrganizer)
+            {
+                progress?.Report("AI-assisted file organization...");
+                cancellationToken.ThrowIfCancellationRequested();
+                items = ScanAndNormalizeItems();
+                var aiOrganizer = serviceProvider.GetRequiredService<IAiOrganizer>();
+
+                // Collect video files in small flat folders whose paths have no parseable episode token.
+                // Items already handled by flatten (folder name has episode token) will have been moved,
+                // so Directory.Exists guards against double-processing.
+                var nonConformingFiles = items
+                    .Where(item =>
+                        item.SeasonFolders.Count == 0 &&
+                        item.VideoFiles.Count is >= 1 and <= 3 &&
+                        episodeParser.Parse(item.OriginalName) is null &&
+                        item.VideoFiles.All(vf => episodeParser.Parse(vf) is null) &&
+                        Directory.Exists(item.Path))
+                    .SelectMany(item => item.VideoFiles)
+                    .ToList();
+
+                if (nonConformingFiles.Count > 0)
                 {
-                    var newPath = episodeParser.TryNormalizeFilename(videoFile);
-                    if (newPath is not null)
+                    logger.LogInformation("AI organizer: sending {Count} non-conforming video files", nonConformingFiles.Count);
+                    var suggestions = await aiOrganizer.SuggestMovesAsync(config.LibraryPath, nonConformingFiles, cancellationToken);
+
+                    foreach (var suggestion in suggestions)
                     {
-                        logger.LogInformation("{Action} non-standard filename: {File} \u2192 {New}",
-                            config.DryRun ? "Would rename" : "Renaming",
-                            Path.GetFileName(videoFile),
-                            Path.GetFileName(newPath));
-                        allOperations.AddRange(await fileMover.RenameInPlaceAsync(videoFile, newPath, config.DryRun));
+                        logger.LogInformation("{Action} via AI: {File} \u2192 {Dest}",
+                            config.DryRun ? "Would move" : "Moving",
+                            Path.GetFileName(suggestion.Source),
+                            Path.GetDirectoryName(suggestion.Destination));
+                        allOperations.AddRange(await fileMover.MoveFileAsync(suggestion.Source, suggestion.Destination, config.DryRun));
                     }
                 }
             }
-        }
 
-        if (config.DeleteSamples)
-        {
-            progress?.Report("Deleting sample files...");
-            cancellationToken.ThrowIfCancellationRequested();
-            items = ScanAndNormalizeItems();
-            foreach (var item in items)
+            if (config.RenameNonStandardFiles)
             {
-                if (!Directory.Exists(item.Path))
-                    continue;
-
-                foreach (var file in Directory.EnumerateFiles(item.Path, "*.*", SearchOption.AllDirectories))
+                progress?.Report("Renaming non-standard episode filenames...");
+                cancellationToken.ThrowIfCancellationRequested();
+                items = ScanAndNormalizeItems();
+                foreach (var item in items.Where(static i => i.Kind == MediaKind.TvSeries))
                 {
-                    if (fileDetector.IsSampleVideoFile(file))
+                    foreach (var videoFile in item.VideoFiles)
                     {
-                        logger.LogInformation("{Action} sample file: {File}",
-                            config.DryRun ? "Would delete" : "Deleting", Path.GetFileName(file));
-                        allOperations.AddRange(await fileMover.DeleteFileAsync(file, config.DryRun, OperationType.DeleteSample));
+                        var newPath = episodeParser.TryNormalizeFilename(videoFile);
+                        if (newPath is not null)
+                        {
+                            logger.LogInformation("{Action} non-standard filename: {File} \u2192 {New}",
+                                config.DryRun ? "Would rename" : "Renaming",
+                                Path.GetFileName(videoFile),
+                                Path.GetFileName(newPath));
+                            allOperations.AddRange(await fileMover.RenameInPlaceAsync(videoFile, newPath, config.DryRun));
+                        }
                     }
                 }
             }
-        }
 
-        if (config.DeleteNonEpisodeFiles)
-        {
-            progress?.Report("Deleting non-episode video files...");
-            cancellationToken.ThrowIfCancellationRequested();
-            items = ScanAndNormalizeItems();
-            foreach (var item in items.Where(static i => i.Kind == MediaKind.TvSeries))
+            if (config.DeleteSamples)
             {
-                foreach (var videoFile in item.VideoFiles)
+                progress?.Report("Deleting sample files...");
+                cancellationToken.ThrowIfCancellationRequested();
+                items = ScanAndNormalizeItems();
+                foreach (var item in items)
                 {
-                    if (episodeParser.Parse(videoFile) is null)
+                    if (!Directory.Exists(item.Path))
+                        continue;
+
+                    foreach (var file in Directory.EnumerateFiles(item.Path, "*.*", SearchOption.AllDirectories))
                     {
-                        logger.LogInformation("{Action} non-episode file: {File}",
-                            config.DryRun ? "Would delete" : "Deleting", Path.GetFileName(videoFile));
-                        allOperations.AddRange(await fileMover.DeleteFileAsync(videoFile, config.DryRun, OperationType.DeleteNonEpisode));
+                        if (fileDetector.IsSampleVideoFile(file))
+                        {
+                            logger.LogInformation("{Action} sample file: {File}",
+                                config.DryRun ? "Would delete" : "Deleting", Path.GetFileName(file));
+                            allOperations.AddRange(await fileMover.DeleteFileAsync(file, config.DryRun, OperationType.DeleteSample));
+                        }
                     }
                 }
             }
-        }
+
+            if (config.DeleteNonEpisodeFiles)
+            {
+                progress?.Report("Deleting non-episode video files...");
+                cancellationToken.ThrowIfCancellationRequested();
+                items = ScanAndNormalizeItems();
+                foreach (var item in items.Where(static i => i.Kind == MediaKind.TvSeries))
+                {
+                    foreach (var videoFile in item.VideoFiles)
+                    {
+                        if (episodeParser.Parse(videoFile) is null)
+                        {
+                            logger.LogInformation("{Action} non-episode file: {File}",
+                                config.DryRun ? "Would delete" : "Deleting", Path.GetFileName(videoFile));
+                            allOperations.AddRange(await fileMover.DeleteFileAsync(videoFile, config.DryRun, OperationType.DeleteNonEpisode));
+                        }
+                    }
+                }
+            }
         } // end if (!isApprovalRun)
 
         if (approvedSeriesKeys is not null && mergeGroups.Count > 0)

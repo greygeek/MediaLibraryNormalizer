@@ -90,6 +90,32 @@ public sealed class SeriesAuditRunnerTests : IDisposable
         Assert.Equal(1, result.Summary.MissingEpisodeCount);
     }
 
+    [Fact]
+    public async Task RunAsync_DeduplicatesFolders_WithSameNormalizedTitle()
+    {
+        // Two folders that normalise to the same title (e.g. canonical + duplicate)
+        var canonical = CreateDirectory("Black Mirror");
+        CreateFile(Path.Combine(CreateSeason(canonical, "Season 01"), "Black.Mirror.S01E01.mkv"));
+        CreateFile(Path.Combine(CreateSeason(canonical, "Season 01"), "Black.Mirror.S01E02.mkv"));
+
+        var duplicate = CreateDirectory("Black.Mirror");
+        CreateFile(Path.Combine(CreateSeason(duplicate, "Season 01"), "Black.Mirror.S01E02.mkv"));
+        CreateFile(Path.Combine(CreateSeason(duplicate, "Season 01"), "Black.Mirror.S01E03.mkv"));
+
+        var sut = new SeriesAuditRunner();
+
+        var result = await sut.RunAsync(new SeriesAuditOptions
+        {
+            LibraryPath = _tempRoot
+        });
+
+        // Should produce ONE entry, not two
+        var series = Assert.Single(result.Series, s => s.NormalizedTitle == "Black Mirror");
+        Assert.Equal(4, series.TotalVideoFiles);
+        Assert.Equal(3, series.ParsedEpisodeCount); // S01E01, S01E02, S01E03
+        Assert.Equal(1, result.Summary.SeriesScanned);
+    }
+
     private string CreateDirectory(string name)
     {
         var path = Path.Combine(_tempRoot, name);
