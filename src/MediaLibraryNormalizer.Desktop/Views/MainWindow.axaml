@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:asyncImageLoader="using:AsyncImageLoader"
         xmlns:audit="using:MediaLibraryNormalizer.Audit"
+        xmlns:lvc="using:LiveChartsCore.SkiaSharpView.Avalonia"
     mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="900"
         x:Class="MediaLibraryNormalizer.Desktop.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -22,7 +23,7 @@
     </Design.DataContext>
 
     <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="16">
-        <Border Grid.Row="0" Padding="20" CornerRadius="12" Background="{DynamicResource SystemControlAcrylicWindowBrush}">
+        <Border Grid.Row="0" Padding="20" CornerRadius="16" Classes="headerBar">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
                 <StackPanel Spacing="6">
                     <TextBlock Text="Media Library Normalizer" FontSize="28" FontWeight="Bold"/>
@@ -33,6 +34,7 @@
 
                 <WrapPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
                     <Button Command="{Binding NavigateHomeCommand}" Content="Home" Margin="0,0,8,8"/>
+                    <Button Command="{Binding NavigateToDashboardCommand}" Content="Dashboard" Margin="0,0,8,8"/>
                     <Button Command="{Binding NavigateToMergeManagerCommand}" Content="Merge Manager" Margin="0,0,8,8"/>
                     <Button Command="{Binding NavigateToMissingEpisodeFinderCommand}" Content="Missing Episode Finder" Margin="0,0,8,8"/>
                     <Button Command="{Binding NavigateToSeriesDiscoveryCommand}" Content="Series Discovery" Margin="0,0,0,8"/>
@@ -71,8 +73,16 @@
                         </Border>
                     </Grid>
 
-                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="16">
+                    <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="16">
                         <Border Grid.Column="0" Padding="20" CornerRadius="16" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Dashboard" FontSize="22" FontWeight="Bold"/>
+                                <TextBlock Text="Library statistics, download activity, and genre composition at a glance." TextWrapping="Wrap" Opacity="0.8"/>
+                                <Button Command="{Binding NavigateToDashboardCommand}" Content="Open Dashboard" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="1" Padding="20" CornerRadius="16" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
                             <StackPanel Spacing="10">
                                 <TextBlock Text="Merge Manager" FontSize="22" FontWeight="Bold"/>
                                 <TextBlock Text="{Binding MergeManagerTileSummary}" TextWrapping="Wrap" Opacity="0.8"/>
@@ -82,7 +92,7 @@
                             </StackPanel>
                         </Border>
 
-                        <Border Grid.Column="1" Padding="20" CornerRadius="16" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                        <Border Grid.Column="2" Padding="20" CornerRadius="16" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
                             <StackPanel Spacing="10">
                                 <TextBlock Text="Missing Episode Finder" FontSize="22" FontWeight="Bold"/>
                                 <TextBlock Text="{Binding MissingEpisodeFinderTileSummary}" TextWrapping="Wrap" Opacity="0.8"/>
@@ -92,7 +102,7 @@
                             </StackPanel>
                         </Border>
 
-                        <Border Grid.Column="2" Padding="20" CornerRadius="16" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
+                        <Border Grid.Column="3" Padding="20" CornerRadius="16" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
                             <StackPanel Spacing="10">
                                 <TextBlock Text="Series Discovery" FontSize="22" FontWeight="Bold"/>
                                 <TextBlock Text="Browse popular and highly-rated TV series by genre. Discover new shows not already in your library and queue them for download." TextWrapping="Wrap" Opacity="0.8"/>
@@ -102,6 +112,73 @@
                             </StackPanel>
                         </Border>
                     </Grid>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Dashboard Page -->
+            <ScrollViewer IsVisible="{Binding IsDashboardActive}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="16">
+
+                    <!-- Summary stat cards -->
+                    <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="12">
+                        <Border Grid.Column="0" Padding="16" CornerRadius="14" Classes="statCard statCardBlue">
+                            <StackPanel Spacing="4" HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding Dashboard.TotalSeries}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" Classes="statValue"/>
+                                <TextBlock Text="series" FontSize="12" Opacity="0.85" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="1" Padding="16" CornerRadius="14" Classes="statCard statCardGreen">
+                            <StackPanel Spacing="4" HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding Dashboard.CatalogMatched}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" Classes="statValue"/>
+                                <TextBlock Text="matched" FontSize="12" Opacity="0.85" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="2" Padding="16" CornerRadius="14" Classes="statCard statCardOrange">
+                            <StackPanel Spacing="4" HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding Dashboard.TotalMissing}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" Classes="statValue"/>
+                                <TextBlock Text="missing" FontSize="12" Opacity="0.85" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="3" Padding="16" CornerRadius="14" Classes="statCard statCardPink">
+                            <StackPanel Spacing="4" HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding Dashboard.TotalDownloads}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" Classes="statValue"/>
+                                <TextBlock Text="downloads" FontSize="12" Opacity="0.85" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="4" Padding="16" CornerRadius="14" Classes="statCard statCardPurple">
+                            <StackPanel Spacing="4" HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding Dashboard.GenreCount}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" Classes="statValue"/>
+                                <TextBlock Text="genres" FontSize="12" Opacity="0.85" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- Charts row -->
+                    <Grid ColumnDefinitions="3*,2*" ColumnSpacing="16">
+                        <!-- Downloads per day -->
+                        <Border Grid.Column="0" Padding="20" CornerRadius="16" Classes="chartCard">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Downloads — Last 30 Days" FontSize="18" FontWeight="Bold"/>
+                                <lvc:CartesianChart Height="300"
+                                    Series="{Binding Dashboard.DownloadSeries}"
+                                    XAxes="{Binding Dashboard.DownloadXAxes}"
+                                    YAxes="{Binding Dashboard.DownloadYAxes}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Genre composition -->
+                        <Border Grid.Column="1" Padding="20" CornerRadius="16" Classes="chartCard">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Library by Genre" FontSize="18" FontWeight="Bold"/>
+                                <lvc:PieChart Height="300"
+                                    Series="{Binding Dashboard.GenreSeries}"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- Loading / status -->
+                    <TextBlock Text="{Binding Dashboard.StatusMessage}" Opacity="0.72"
+                               IsVisible="{Binding Dashboard.StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                 </StackPanel>
             </ScrollViewer>
 

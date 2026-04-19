@@ -24,4 +24,6 @@ public interface INzbDownloadHistory
         int? seriesYear,
         string episodeKey,
         CancellationToken ct = default);
+
+    Task<IReadOnlyList<NzbDownloadAttempt>> GetAllAttemptsAsync(CancellationToken ct = default);
 }

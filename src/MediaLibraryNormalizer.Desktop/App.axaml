@@ -2,8 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="MediaLibraryNormalizer.Desktop.App"
              xmlns:local="using:MediaLibraryNormalizer.Desktop"
-             RequestedThemeVariant="Default">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+             RequestedThemeVariant="Light">
 
     <Application.DataTemplates>
         <local:ViewLocator/>
@@ -11,5 +10,160 @@
   
     <Application.Styles>
         <FluentTheme />
+
+        <!-- Global styling to match pastel-gradient mockup -->
+
+        <!-- Window background: soft pastel gradient -->
+        <Style Selector="Window">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                        <GradientStop Color="#FFF0E6FF" Offset="0"/>
+                        <GradientStop Color="#FFE8F0FE" Offset="0.35"/>
+                        <GradientStop Color="#FFFCE7F3" Offset="0.65"/>
+                        <GradientStop Color="#FFE0E7FF" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Navigation buttons: pill-shaped, subtle background -->
+        <Style Selector="WrapPanel > Button">
+            <Setter Property="CornerRadius" Value="18"/>
+            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Background" Value="#22000000"/>
+            <Setter Property="Foreground" Value="#FF3B3B5C"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style Selector="WrapPanel > Button:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#33000000"/>
+        </Style>
+
+        <!-- Accent buttons: gradient fill -->
+        <Style Selector="Button.accent">
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0%,50%" EndPoint="100%,50%">
+                        <GradientStop Color="#FF8B5CF6" Offset="0"/>
+                        <GradientStop Color="#FFEC4899" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+
+        <!-- General buttons: rounded, tinted -->
+        <Style Selector="Button">
+            <Setter Property="CornerRadius" Value="12"/>
+        </Style>
+
+        <!-- Stat cards for dashboard -->
+        <Style Selector="Border.statCard">
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style Selector="Border.statCardBlue">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                        <GradientStop Color="#FF3B82F6" Offset="0"/>
+                        <GradientStop Color="#FF60A5FA" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style Selector="Border.statCardGreen">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                        <GradientStop Color="#FF10B981" Offset="0"/>
+                        <GradientStop Color="#FF34D399" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style Selector="Border.statCardOrange">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                        <GradientStop Color="#FFF97316" Offset="0"/>
+                        <GradientStop Color="#FFFB923C" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style Selector="Border.statCardPink">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                        <GradientStop Color="#FFEC4899" Offset="0"/>
+                        <GradientStop Color="#FFF472B6" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style Selector="Border.statCardPurple">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                        <GradientStop Color="#FF8B5CF6" Offset="0"/>
+                        <GradientStop Color="#FFA78BFA" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Stat card text: white on colored backgrounds -->
+        <Style Selector="Border.statCard TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Border.statCard TextBlock.statValue">
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <!-- Chart cards -->
+        <Style Selector="Border.chartCard">
+            <Setter Property="Background" Value="#CCFFFFFF"/>
+            <Setter Property="BorderBrush" Value="#22000000"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <!-- ListBox item cards: subtle styling -->
+        <Style Selector="ListBox">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+
+        <!-- TextBox styling -->
+        <Style Selector="TextBox">
+            <Setter Property="CornerRadius" Value="10"/>
+        </Style>
+
+        <!-- ComboBox styling -->
+        <Style Selector="ComboBox">
+            <Setter Property="CornerRadius" Value="10"/>
+        </Style>
+
+        <!-- CheckBox styling -->
+        <Style Selector="CheckBox">
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+
+        <!-- Header area: translucent card -->
+        <Style Selector="Border.headerBar">
+            <Setter Property="Background" Value="#99FFFFFF"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+
+        <!-- Episode preview badges (colorful pill tags) -->
+        <Style Selector="Border.episodeBadge">
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="10,4"/>
+        </Style>
+
     </Application.Styles>
 </Application>

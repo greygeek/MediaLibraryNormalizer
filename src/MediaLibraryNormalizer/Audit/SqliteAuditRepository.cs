@@ -210,4 +210,18 @@ public sealed class SqliteAuditRepository(AppDbContextFactory factory) : IAuditR
         db.NzbDownloadAttempts.RemoveRange(rows);
         await db.SaveChangesAsync(ct);
     }
+
+    public async Task<IReadOnlyList<NzbDownloadAttempt>> GetAllAttemptsAsync(CancellationToken ct = default)
+    {
+        await using var db = factory.Create();
+        return await db.NzbDownloadAttempts
+            .OrderByDescending(a => a.AttemptedAt)
+            .Select(a => new NzbDownloadAttempt(
+                a.ReleaseKey,
+                a.ReleaseTitle,
+                a.NzbId,
+                a.SabNzoId,
+                DateTimeOffset.Parse(a.AttemptedAt, null, System.Globalization.DateTimeStyles.RoundtripKind)))
+            .ToListAsync(ct);
+    }
 }
