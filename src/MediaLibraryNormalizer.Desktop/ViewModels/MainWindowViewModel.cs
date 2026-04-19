@@ -41,7 +41,6 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public IAsyncRelayCommand PreviewCommand { get; }
     public IAsyncRelayCommand MergeCommand { get; }
-    public IRelayCommand NavigateHomeCommand { get; }
     public IRelayCommand NavigateToDashboardCommand { get; }
     public IRelayCommand NavigateToMergeManagerCommand { get; }
     public IRelayCommand NavigateToMissingEpisodeFinderCommand { get; }
@@ -53,7 +52,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public IRelayCommand CancelMergeCommand { get; }
 
     [ObservableProperty]
-    private MainWindowPage activePage = MainWindowPage.Home;
+    private MainWindowPage activePage = MainWindowPage.Dashboard;
 
     [ObservableProperty]
     private string libraryPath = string.Empty;
@@ -172,7 +171,6 @@ public partial class MainWindowViewModel : ViewModelBase
         PreviewCommand = new AsyncRelayCommand(() => ExecuteRunAsync(dryRun: true), CanRunPreview);
         MergeCommand = new AsyncRelayCommand(() => ExecuteRunAsync(dryRun: false), CanRunMerge);
         CancelMergeCommand = new RelayCommand(() => _mergeCts?.Cancel(), () => IsBusy);
-        NavigateHomeCommand = new RelayCommand(() => NavigateTo(MainWindowPage.Home), CanNavigate);
         NavigateToDashboardCommand = new RelayCommand(() => NavigateTo(MainWindowPage.Dashboard), CanNavigate);
         NavigateToMergeManagerCommand = new RelayCommand(() => NavigateTo(MainWindowPage.MergeManager), CanNavigate);
         NavigateToMissingEpisodeFinderCommand = new RelayCommand(() => NavigateTo(MainWindowPage.MissingEpisodeFinder), CanNavigate);
@@ -184,11 +182,10 @@ public partial class MainWindowViewModel : ViewModelBase
 
         LoadConfig(ConfigLoader.Load());
         _ = InitializeFromDatabaseAsync(factory);
+        _ = Dashboard.LoadAsync();
     }
 
     public string DuplicateGroupsHeader => $"Duplicate Groups ({DuplicateGroups.Count})";
-
-    public bool IsHomePageActive => ActivePage == MainWindowPage.Home;
 
     public bool IsDashboardActive => ActivePage == MainWindowPage.Dashboard;
 
@@ -200,7 +197,6 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public string ActiveWorkspaceTitle => ActivePage switch
     {
-        MainWindowPage.Home => "Choose a workflow",
         MainWindowPage.Dashboard => "Dashboard",
         MainWindowPage.MergeManager => "Merge Manager",
         MainWindowPage.MissingEpisodeFinder => "Missing Episode Finder",
@@ -210,7 +206,6 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public string ActiveWorkspaceDescription => ActivePage switch
     {
-        MainWindowPage.Home => "Launch the existing merge workflow or the new metadata-driven audit workspace.",
         MainWindowPage.Dashboard => "Library statistics, download activity, and collection composition at a glance.",
         MainWindowPage.MergeManager => "Preview duplicate groups, approve merges, and execute the existing normalization pipeline.",
         MainWindowPage.MissingEpisodeFinder => "Audit your library against online episode catalogs and review what is missing before any later acquisition workflow exists.",
@@ -270,7 +265,6 @@ public partial class MainWindowViewModel : ViewModelBase
 
     partial void OnActivePageChanged(MainWindowPage value)
     {
-        OnPropertyChanged(nameof(IsHomePageActive));
         OnPropertyChanged(nameof(IsDashboardActive));
         OnPropertyChanged(nameof(IsMergeManagerActive));
         OnPropertyChanged(nameof(IsMissingEpisodeFinderActive));
@@ -828,7 +822,6 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         PreviewCommand.NotifyCanExecuteChanged();
         MergeCommand.NotifyCanExecuteChanged();
-        NavigateHomeCommand.NotifyCanExecuteChanged();
         NavigateToDashboardCommand.NotifyCanExecuteChanged();
         NavigateToMergeManagerCommand.NotifyCanExecuteChanged();
         NavigateToMissingEpisodeFinderCommand.NotifyCanExecuteChanged();
@@ -847,7 +840,6 @@ public partial class MainWindowViewModel : ViewModelBase
         ActivePage = page;
         StatusMessage = page switch
         {
-            MainWindowPage.Home => "Ready.",
             MainWindowPage.Dashboard => "Dashboard loaded.",
             MainWindowPage.MergeManager => string.IsNullOrWhiteSpace(LibraryPath)
                 ? "Set a library path and run a dry run to inspect duplicate groups."

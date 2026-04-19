@@ -2,76 +2,111 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="MediaLibraryNormalizer.Desktop.App"
              xmlns:local="using:MediaLibraryNormalizer.Desktop"
-             RequestedThemeVariant="Light">
+             RequestedThemeVariant="Default">
 
     <Application.DataTemplates>
         <local:ViewLocator/>
     </Application.DataTemplates>
-  
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceInclude x:Key="Light" Source="avares://MediaLibraryNormalizer.Desktop/Themes/Light.axaml"/>
+                <ResourceInclude x:Key="Dark" Source="avares://MediaLibraryNormalizer.Desktop/Themes/Dark.axaml"/>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
     <Application.Styles>
         <FluentTheme />
 
-        <!-- Global styling to match pastel-gradient mockup -->
-
-        <!-- Window background: soft pastel gradient -->
+        <!-- Window: themed background -->
         <Style Selector="Window">
-            <Setter Property="Background">
-                <Setter.Value>
-                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-                        <GradientStop Color="#FFF0E6FF" Offset="0"/>
-                        <GradientStop Color="#FFE8F0FE" Offset="0.35"/>
-                        <GradientStop Color="#FFFCE7F3" Offset="0.65"/>
-                        <GradientStop Color="#FFE0E7FF" Offset="1"/>
-                    </LinearGradientBrush>
-                </Setter.Value>
-            </Setter>
+            <Setter Property="Background" Value="{DynamicResource AppBackgroundBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
 
-        <!-- Navigation buttons: pill-shaped, subtle background -->
+        <!-- Default text colors -->
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.secondary">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+        </Style>
+
+        <!-- Navigation buttons: pill-shaped -->
         <Style Selector="WrapPanel > Button">
             <Setter Property="CornerRadius" Value="18"/>
             <Setter Property="Padding" Value="16,8"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Background" Value="#22000000"/>
-            <Setter Property="Foreground" Value="#FF3B3B5C"/>
+            <Setter Property="Background" Value="{DynamicResource NavButtonBgBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource NavButtonFgBrush}"/>
             <Setter Property="BorderThickness" Value="0"/>
         </Style>
         <Style Selector="WrapPanel > Button:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#33000000"/>
+            <Setter Property="Background" Value="{DynamicResource NavButtonHoverBgBrush}"/>
         </Style>
 
-        <!-- Accent buttons: gradient fill -->
+        <!-- Accent buttons: primary gradient -->
         <Style Selector="Button.accent">
             <Setter Property="CornerRadius" Value="14"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="Background">
-                <Setter.Value>
-                    <LinearGradientBrush StartPoint="0%,50%" EndPoint="100%,50%">
-                        <GradientStop Color="#FF8B5CF6" Offset="0"/>
-                        <GradientStop Color="#FFEC4899" Offset="1"/>
-                    </LinearGradientBrush>
-                </Setter.Value>
-            </Setter>
+            <Setter Property="Background" Value="{DynamicResource AccentPrimaryBrush}"/>
             <Setter Property="BorderThickness" Value="0"/>
         </Style>
-
-        <!-- General buttons: rounded, tinted -->
-        <Style Selector="Button">
-            <Setter Property="CornerRadius" Value="12"/>
+        <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AccentSecondaryBrush}"/>
         </Style>
 
-        <!-- Stat cards for dashboard -->
+        <!-- General controls: rounded corners (per theme spec) -->
+        <Style Selector="Button">
+            <Setter Property="CornerRadius" Value="10"/>
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="CornerRadius" Value="10"/>
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="CornerRadius" Value="10"/>
+        </Style>
+        <Style Selector="CheckBox">
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+
+        <!-- Cards: surface color, border, rounded -->
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="Padding" Value="20"/>
+        </Style>
+
+        <!-- Header bar -->
+        <Style Selector="Border.headerBar">
+            <Setter Property="Background" Value="{DynamicResource HeaderBgBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="14"/>
+        </Style>
+
+        <!-- Stat cards: shared base -->
         <Style Selector="Border.statCard">
             <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="Padding" Value="16"/>
         </Style>
+        <Style Selector="Border.statCard TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <!-- Stat card color variants using gradient brushes -->
         <Style Selector="Border.statCardBlue">
             <Setter Property="Background">
                 <Setter.Value>
                     <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-                        <GradientStop Color="#FF3B82F6" Offset="0"/>
-                        <GradientStop Color="#FF60A5FA" Offset="1"/>
+                        <GradientStop Color="{DynamicResource StatBlueStart}" Offset="0"/>
+                        <GradientStop Color="{DynamicResource StatBlueEnd}" Offset="1"/>
                     </LinearGradientBrush>
                 </Setter.Value>
             </Setter>
@@ -80,8 +115,8 @@
             <Setter Property="Background">
                 <Setter.Value>
                     <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-                        <GradientStop Color="#FF10B981" Offset="0"/>
-                        <GradientStop Color="#FF34D399" Offset="1"/>
+                        <GradientStop Color="{DynamicResource StatGreenStart}" Offset="0"/>
+                        <GradientStop Color="{DynamicResource StatGreenEnd}" Offset="1"/>
                     </LinearGradientBrush>
                 </Setter.Value>
             </Setter>
@@ -90,8 +125,8 @@
             <Setter Property="Background">
                 <Setter.Value>
                     <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-                        <GradientStop Color="#FFF97316" Offset="0"/>
-                        <GradientStop Color="#FFFB923C" Offset="1"/>
+                        <GradientStop Color="{DynamicResource StatOrangeStart}" Offset="0"/>
+                        <GradientStop Color="{DynamicResource StatOrangeEnd}" Offset="1"/>
                     </LinearGradientBrush>
                 </Setter.Value>
             </Setter>
@@ -100,8 +135,8 @@
             <Setter Property="Background">
                 <Setter.Value>
                     <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-                        <GradientStop Color="#FFEC4899" Offset="0"/>
-                        <GradientStop Color="#FFF472B6" Offset="1"/>
+                        <GradientStop Color="{DynamicResource StatPinkStart}" Offset="0"/>
+                        <GradientStop Color="{DynamicResource StatPinkEnd}" Offset="1"/>
                     </LinearGradientBrush>
                 </Setter.Value>
             </Setter>
@@ -110,59 +145,57 @@
             <Setter Property="Background">
                 <Setter.Value>
                     <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-                        <GradientStop Color="#FF8B5CF6" Offset="0"/>
-                        <GradientStop Color="#FFA78BFA" Offset="1"/>
+                        <GradientStop Color="{DynamicResource StatPurpleStart}" Offset="0"/>
+                        <GradientStop Color="{DynamicResource StatPurpleEnd}" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style Selector="Border.statCardCyan">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                        <GradientStop Color="{DynamicResource StatCyanStart}" Offset="0"/>
+                        <GradientStop Color="{DynamicResource StatCyanEnd}" Offset="1"/>
                     </LinearGradientBrush>
                 </Setter.Value>
             </Setter>
         </Style>
 
-        <!-- Stat card text: white on colored backgrounds -->
-        <Style Selector="Border.statCard TextBlock">
-            <Setter Property="Foreground" Value="White"/>
-        </Style>
-        <Style Selector="Border.statCard TextBlock.statValue">
-            <Setter Property="Foreground" Value="White"/>
-        </Style>
-
         <!-- Chart cards -->
         <Style Selector="Border.chartCard">
-            <Setter Property="Background" Value="#CCFFFFFF"/>
-            <Setter Property="BorderBrush" Value="#22000000"/>
+            <Setter Property="Background" Value="{DynamicResource ChartCardBgBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ChartCardBorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="14"/>
         </Style>
 
-        <!-- ListBox item cards: subtle styling -->
+        <!-- Status pills -->
+        <Style Selector="Border.statusPill">
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="12,4"/>
+        </Style>
+        <Style Selector="Border.statusPill TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Border.statusSuccess">
+            <Setter Property="Background" Value="{DynamicResource StatusSuccessBrush}"/>
+        </Style>
+        <Style Selector="Border.statusWarning">
+            <Setter Property="Background" Value="{DynamicResource StatusWarningBrush}"/>
+        </Style>
+        <Style Selector="Border.statusError">
+            <Setter Property="Background" Value="{DynamicResource StatusErrorBrush}"/>
+        </Style>
+        <Style Selector="Border.statusSuccess TextBlock, Border.statusWarning TextBlock, Border.statusError TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <!-- ListBox: transparent background -->
         <Style Selector="ListBox">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
-        </Style>
-
-        <!-- TextBox styling -->
-        <Style Selector="TextBox">
-            <Setter Property="CornerRadius" Value="10"/>
-        </Style>
-
-        <!-- ComboBox styling -->
-        <Style Selector="ComboBox">
-            <Setter Property="CornerRadius" Value="10"/>
-        </Style>
-
-        <!-- CheckBox styling -->
-        <Style Selector="CheckBox">
-            <Setter Property="FontSize" Value="13"/>
-        </Style>
-
-        <!-- Header area: translucent card -->
-        <Style Selector="Border.headerBar">
-            <Setter Property="Background" Value="#99FFFFFF"/>
-            <Setter Property="BorderThickness" Value="0"/>
-        </Style>
-
-        <!-- Episode preview badges (colorful pill tags) -->
-        <Style Selector="Border.episodeBadge">
-            <Setter Property="CornerRadius" Value="8"/>
-            <Setter Property="Padding" Value="10,4"/>
         </Style>
 
     </Application.Styles>

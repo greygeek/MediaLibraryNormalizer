@@ -1,0 +1,69 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Background & Surface -->
+    <Color x:Key="AppBackground">#F5F7FB</Color>
+    <Color x:Key="AppSurface">#FFFFFF</Color>
+    <Color x:Key="AppBorder">#E2E8F0</Color>
+
+    <!-- Text -->
+    <Color x:Key="TextPrimary">#1E293B</Color>
+    <Color x:Key="TextSecondary">#64748B</Color>
+
+    <!-- Accents -->
+    <Color x:Key="AccentPrimary">#6366F1</Color>
+    <Color x:Key="AccentSecondary">#8B5CF6</Color>
+    <Color x:Key="AccentCyan">#06B6D4</Color>
+
+    <!-- Status -->
+    <Color x:Key="StatusSuccess">#22C55E</Color>
+    <Color x:Key="StatusWarning">#F59E0B</Color>
+    <Color x:Key="StatusError">#EF4444</Color>
+
+    <!-- Stat card colors -->
+    <Color x:Key="StatBlueStart">#6366F1</Color>
+    <Color x:Key="StatBlueEnd">#818CF8</Color>
+    <Color x:Key="StatGreenStart">#22C55E</Color>
+    <Color x:Key="StatGreenEnd">#4ADE80</Color>
+    <Color x:Key="StatOrangeStart">#F59E0B</Color>
+    <Color x:Key="StatOrangeEnd">#FBBF24</Color>
+    <Color x:Key="StatPinkStart">#EC4899</Color>
+    <Color x:Key="StatPinkEnd">#F472B6</Color>
+    <Color x:Key="StatPurpleStart">#8B5CF6</Color>
+    <Color x:Key="StatPurpleEnd">#A78BFA</Color>
+    <Color x:Key="StatCyanStart">#06B6D4</Color>
+    <Color x:Key="StatCyanEnd">#22D3EE</Color>
+
+    <!-- Nav button -->
+    <Color x:Key="NavButtonBg">#0F000000</Color>
+    <Color x:Key="NavButtonHoverBg">#1A000000</Color>
+    <Color x:Key="NavButtonFg">#1E293B</Color>
+    <Color x:Key="NavButtonActiveBg">#6366F1</Color>
+
+    <!-- Chart card -->
+    <Color x:Key="ChartCardBg">#FFFFFF</Color>
+    <Color x:Key="ChartCardBorder">#E2E8F0</Color>
+
+    <!-- Header -->
+    <Color x:Key="HeaderBg">#E6FFFFFF</Color>
+
+    <!-- Brushes built from the colors above -->
+    <SolidColorBrush x:Key="AppBackgroundBrush" Color="{DynamicResource AppBackground}"/>
+    <SolidColorBrush x:Key="AppSurfaceBrush" Color="{DynamicResource AppSurface}"/>
+    <SolidColorBrush x:Key="AppBorderBrush" Color="{DynamicResource AppBorder}"/>
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{DynamicResource TextPrimary}"/>
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{DynamicResource TextSecondary}"/>
+    <SolidColorBrush x:Key="AccentPrimaryBrush" Color="{DynamicResource AccentPrimary}"/>
+    <SolidColorBrush x:Key="AccentSecondaryBrush" Color="{DynamicResource AccentSecondary}"/>
+    <SolidColorBrush x:Key="StatusSuccessBrush" Color="{DynamicResource StatusSuccess}"/>
+    <SolidColorBrush x:Key="StatusWarningBrush" Color="{DynamicResource StatusWarning}"/>
+    <SolidColorBrush x:Key="StatusErrorBrush" Color="{DynamicResource StatusError}"/>
+    <SolidColorBrush x:Key="NavButtonBgBrush" Color="{DynamicResource NavButtonBg}"/>
+    <SolidColorBrush x:Key="NavButtonHoverBgBrush" Color="{DynamicResource NavButtonHoverBg}"/>
+    <SolidColorBrush x:Key="NavButtonFgBrush" Color="{DynamicResource NavButtonFg}"/>
+    <SolidColorBrush x:Key="NavButtonActiveBgBrush" Color="{DynamicResource NavButtonActiveBg}"/>
+    <SolidColorBrush x:Key="ChartCardBgBrush" Color="{DynamicResource ChartCardBg}"/>
+    <SolidColorBrush x:Key="ChartCardBorderBrush" Color="{DynamicResource ChartCardBorder}"/>
+    <SolidColorBrush x:Key="HeaderBgBrush" Color="{DynamicResource HeaderBg}"/>
+
+</ResourceDictionary>

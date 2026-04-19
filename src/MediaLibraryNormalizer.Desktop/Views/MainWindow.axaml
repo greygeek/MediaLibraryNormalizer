@@ -22,7 +22,7 @@
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
-    <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="16">
+    <Grid RowDefinitions="Auto,*" Margin="16">
         <Border Grid.Row="0" Padding="20" CornerRadius="16" Classes="headerBar">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
                 <StackPanel Spacing="6">
@@ -33,7 +33,6 @@
                 </StackPanel>
 
                 <WrapPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
-                    <Button Command="{Binding NavigateHomeCommand}" Content="Home" Margin="0,0,8,8"/>
                     <Button Command="{Binding NavigateToDashboardCommand}" Content="Dashboard" Margin="0,0,8,8"/>
                     <Button Command="{Binding NavigateToMergeManagerCommand}" Content="Merge Manager" Margin="0,0,8,8"/>
                     <Button Command="{Binding NavigateToMissingEpisodeFinderCommand}" Content="Missing Episode Finder" Margin="0,0,8,8"/>
@@ -42,120 +41,107 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="1" Margin="0,16,0,0" Padding="16" CornerRadius="12" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1"
-                IsVisible="{Binding IsHomePageActive}">
-            <StackPanel Spacing="8">
-                <TextBlock Text="Library Path" FontWeight="SemiBold"/>
-                <TextBox Text="{Binding LibraryPath}" Watermark="F:\TV or another library root"/>
-                <TextBlock Text="{Binding HomeStatusSummary}" Opacity="0.72" TextWrapping="Wrap"/>
-            </StackPanel>
-        </Border>
-
-        <Grid Grid.Row="2" Margin="0,16,0,0">
-            <ScrollViewer IsVisible="{Binding IsHomePageActive}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Spacing="16">
-                    <Grid ColumnDefinitions="2*,3*" ColumnSpacing="16">
-                        <Border Grid.Column="0" Padding="20" CornerRadius="16" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                            <StackPanel Spacing="8">
-                                <TextBlock Text="Desktop Hub" FontSize="24" FontWeight="Bold"/>
-                                <TextBlock Text="One shell, multiple workflows. Use the existing merge manager for cleanup operations or launch the new audit workspace to track collection completeness." TextWrapping="Wrap" Opacity="0.8"/>
-                                <TextBlock Text="{Binding HomeStatusSummary}" TextWrapping="Wrap" Opacity="0.72"/>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Grid.Column="1" Padding="20" CornerRadius="16" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                            <StackPanel Spacing="8">
-                                <TextBlock Text="Roadmap" FontSize="20" FontWeight="Bold"/>
-                                <TextBlock Text="Phase 1: landing page and navigation shell." Opacity="0.78"/>
-                                <TextBlock Text="Phase 2: online metadata providers, reconciliation engine, and missing-episode reports." Opacity="0.78" TextWrapping="Wrap"/>
-                                <TextBlock Text="Future workflows can be added as more tiles without replacing the shell again." Opacity="0.72" TextWrapping="Wrap"/>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-
-                    <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="16">
-                        <Border Grid.Column="0" Padding="20" CornerRadius="16" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                            <StackPanel Spacing="10">
-                                <TextBlock Text="Dashboard" FontSize="22" FontWeight="Bold"/>
-                                <TextBlock Text="Library statistics, download activity, and genre composition at a glance." TextWrapping="Wrap" Opacity="0.8"/>
-                                <Button Command="{Binding NavigateToDashboardCommand}" Content="Open Dashboard" HorizontalAlignment="Left" Margin="0,8,0,0"/>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Grid.Column="1" Padding="20" CornerRadius="16" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                            <StackPanel Spacing="10">
-                                <TextBlock Text="Merge Manager" FontSize="22" FontWeight="Bold"/>
-                                <TextBlock Text="{Binding MergeManagerTileSummary}" TextWrapping="Wrap" Opacity="0.8"/>
-                                <TextBlock Text="Current implementation" FontWeight="SemiBold" Margin="0,8,0,0"/>
-                                <TextBlock Text="Review duplicate groups, stage approvals, inspect planned operations, and run live merges." TextWrapping="Wrap" Opacity="0.72"/>
-                                <Button Command="{Binding NavigateToMergeManagerCommand}" Content="Launch Merge Manager" Classes="accent" HorizontalAlignment="Left" Margin="0,8,0,0"/>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Grid.Column="2" Padding="20" CornerRadius="16" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                            <StackPanel Spacing="10">
-                                <TextBlock Text="Missing Episode Finder" FontSize="22" FontWeight="Bold"/>
-                                <TextBlock Text="{Binding MissingEpisodeFinderTileSummary}" TextWrapping="Wrap" Opacity="0.8"/>
-                                <TextBlock Text="Current implementation" FontWeight="SemiBold" Margin="0,8,0,0"/>
-                                <TextBlock Text="Workspace shell and navigation are ready. Catalog providers, comparison logic, and reports are the next increment." TextWrapping="Wrap" Opacity="0.72"/>
-                                <Button Command="{Binding NavigateToMissingEpisodeFinderCommand}" Content="Open Missing Episode Finder" HorizontalAlignment="Left" Margin="0,8,0,0"/>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Grid.Column="3" Padding="20" CornerRadius="16" BorderBrush="{DynamicResource ThemeBorderLowBrush}" BorderThickness="1">
-                            <StackPanel Spacing="10">
-                                <TextBlock Text="Series Discovery" FontSize="22" FontWeight="Bold"/>
-                                <TextBlock Text="Browse popular and highly-rated TV series by genre. Discover new shows not already in your library and queue them for download." TextWrapping="Wrap" Opacity="0.8"/>
-                                <TextBlock Text="Current implementation" FontWeight="SemiBold" Margin="0,8,0,0"/>
-                                <TextBlock Text="Genre-based browsing with cover photos, inventory filtering, and NZB download queueing." TextWrapping="Wrap" Opacity="0.72"/>
-                                <Button Command="{Binding NavigateToSeriesDiscoveryCommand}" Content="Open Series Discovery" HorizontalAlignment="Left" Margin="0,8,0,0"/>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-                </StackPanel>
-            </ScrollViewer>
-
+        <Grid Grid.Row="1" Margin="0,16,0,0">
             <!-- Dashboard Page -->
             <ScrollViewer IsVisible="{Binding IsDashboardActive}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Spacing="16">
 
-                    <!-- Summary stat cards -->
+                    <!-- Library path + quick-launch row -->
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                        <Border Grid.Column="0" Classes="card">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Library Path" FontWeight="SemiBold"/>
+                                <TextBox Text="{Binding LibraryPath}" Watermark="F:\TV or another library root"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="1" Classes="card">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Quick Launch" FontWeight="SemiBold"/>
+                                <WrapPanel Orientation="Horizontal">
+                                    <Button Command="{Binding NavigateToMergeManagerCommand}" Content="Merge Manager" Margin="0,0,8,0"/>
+                                    <Button Command="{Binding NavigateToMissingEpisodeFinderCommand}" Content="Missing Episodes" Margin="0,0,8,0"/>
+                                    <Button Command="{Binding NavigateToSeriesDiscoveryCommand}" Content="Discovery" Classes="accent"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- Summary stat cards — row 1 -->
                     <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="12">
-                        <Border Grid.Column="0" Padding="16" CornerRadius="14" Classes="statCard statCardBlue">
+                        <Border Grid.Column="0" Classes="statCard statCardBlue">
                             <StackPanel Spacing="4" HorizontalAlignment="Center">
-                                <TextBlock Text="{Binding Dashboard.TotalSeries}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" Classes="statValue"/>
+                                <TextBlock Text="{Binding Dashboard.TotalSeries}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 <TextBlock Text="series" FontSize="12" Opacity="0.85" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Border>
-                        <Border Grid.Column="1" Padding="16" CornerRadius="14" Classes="statCard statCardGreen">
+                        <Border Grid.Column="1" Classes="statCard statCardGreen">
                             <StackPanel Spacing="4" HorizontalAlignment="Center">
-                                <TextBlock Text="{Binding Dashboard.CatalogMatched}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" Classes="statValue"/>
+                                <TextBlock Text="{Binding Dashboard.CatalogMatched}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 <TextBlock Text="matched" FontSize="12" Opacity="0.85" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Border>
-                        <Border Grid.Column="2" Padding="16" CornerRadius="14" Classes="statCard statCardOrange">
+                        <Border Grid.Column="2" Classes="statCard statCardOrange">
                             <StackPanel Spacing="4" HorizontalAlignment="Center">
-                                <TextBlock Text="{Binding Dashboard.TotalMissing}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" Classes="statValue"/>
+                                <TextBlock Text="{Binding Dashboard.TotalMissing}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 <TextBlock Text="missing" FontSize="12" Opacity="0.85" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Border>
-                        <Border Grid.Column="3" Padding="16" CornerRadius="14" Classes="statCard statCardPink">
+                        <Border Grid.Column="3" Classes="statCard statCardPink">
                             <StackPanel Spacing="4" HorizontalAlignment="Center">
-                                <TextBlock Text="{Binding Dashboard.TotalDownloads}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" Classes="statValue"/>
+                                <TextBlock Text="{Binding Dashboard.TotalDownloads}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 <TextBlock Text="downloads" FontSize="12" Opacity="0.85" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Border>
-                        <Border Grid.Column="4" Padding="16" CornerRadius="14" Classes="statCard statCardPurple">
+                        <Border Grid.Column="4" Classes="statCard statCardPurple">
                             <StackPanel Spacing="4" HorizontalAlignment="Center">
-                                <TextBlock Text="{Binding Dashboard.GenreCount}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" Classes="statValue"/>
+                                <TextBlock Text="{Binding Dashboard.GenreCount}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 <TextBlock Text="genres" FontSize="12" Opacity="0.85" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- Summary stat cards — row 2 -->
+                    <Grid ColumnDefinitions="*,*,*,*,*,*" ColumnSpacing="12">
+                        <Border Grid.Column="0" Classes="statCard statCardCyan">
+                            <StackPanel Spacing="4" HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding Dashboard.TotalEpisodes}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                <TextBlock Text="episodes" FontSize="12" Opacity="0.85" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="1" Classes="statCard statCardGreen">
+                            <StackPanel Spacing="4" HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding Dashboard.CompletionRate}" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                <TextBlock Text="completion" FontSize="12" Opacity="0.85" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="2" Classes="statCard statCardOrange">
+                            <StackPanel Spacing="4" HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding Dashboard.AverageRating}" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                <TextBlock Text="avg rating" FontSize="12" Opacity="0.85" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="3" Classes="statCard statCardPurple">
+                            <StackPanel Spacing="4" HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding Dashboard.TopNetwork}" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="top network" FontSize="12" Opacity="0.85" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="4" Classes="statCard statCardBlue">
+                            <StackPanel Spacing="4" HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding Dashboard.DownloadsThisWeek}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                <TextBlock Text="this week" FontSize="12" Opacity="0.85" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="5" Classes="statCard statCardPink">
+                            <StackPanel Spacing="4" HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding Dashboard.LibraryHealth}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                <TextBlock Text="health" FontSize="12" Opacity="0.85" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Border>
                     </Grid>
 
                     <!-- Charts row -->
                     <Grid ColumnDefinitions="3*,2*" ColumnSpacing="16">
-                        <!-- Downloads per day -->
                         <Border Grid.Column="0" Padding="20" CornerRadius="16" Classes="chartCard">
                             <StackPanel Spacing="8">
                                 <TextBlock Text="Downloads — Last 30 Days" FontSize="18" FontWeight="Bold"/>
@@ -165,8 +151,6 @@
                                     YAxes="{Binding Dashboard.DownloadYAxes}"/>
                             </StackPanel>
                         </Border>
-
-                        <!-- Genre composition -->
                         <Border Grid.Column="1" Padding="20" CornerRadius="16" Classes="chartCard">
                             <StackPanel Spacing="8">
                                 <TextBlock Text="Library by Genre" FontSize="18" FontWeight="Bold"/>
@@ -175,6 +159,31 @@
                             </StackPanel>
                         </Border>
                     </Grid>
+
+                    <!-- Status breakdown chart -->
+                    <Border Padding="20" CornerRadius="16" Classes="chartCard">
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                            <StackPanel Grid.Column="0" Spacing="8">
+                                <TextBlock Text="Series Status Breakdown" FontSize="18" FontWeight="Bold"/>
+                                <lvc:PieChart Height="260"
+                                    Series="{Binding Dashboard.StatusSeries}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="12" VerticalAlignment="Center">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="Ready for Catalog Lookup" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Series with all local episodes present on disk." Classes="secondary" FontSize="12"/>
+                                </StackPanel>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="Partial Inventory" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Some episodes are missing from the library." Classes="secondary" FontSize="12"/>
+                                </StackPanel>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="No Parsed Episodes" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Folder exists but no episode files were recognized." Classes="secondary" FontSize="12"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
 
                     <!-- Loading / status -->
                     <TextBlock Text="{Binding Dashboard.StatusMessage}" Opacity="0.72"
@@ -854,8 +863,6 @@
                 </Grid>
             </Grid>
         </Grid>
-
-        <TextBlock Grid.Row="3" Margin="0,12,0,0" Text="The desktop shell reuses the existing normalization core and is now structured to host multiple workflows inside the same window." Opacity="0.7"/>
     </Grid>
 
 </Window>
